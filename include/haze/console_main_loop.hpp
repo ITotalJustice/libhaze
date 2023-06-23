@@ -98,11 +98,7 @@ namespace haze {
         protected:
             void ProcessEvent() override {
                 /* Pump applet events, and check if exit was requested. */
-                if (!appletMainLoop()) {
-                    m_reactor->SetResult(haze::ResultStopRequested());
-                }
-
-                if (m_token.stop_requested()) {
+                if (!appletMainLoop() || m_token.stop_requested()) {
                     m_reactor->SetResult(haze::ResultStopRequested());
                 }
 
@@ -122,6 +118,8 @@ namespace haze {
                     if (appletGetFocusState() != AppletFocusState_Background) {
                         return true;
                     }
+
+                    svcSleepThread(FrameDelayNs);
                 }
 
                 /* Exit was requested. */
@@ -137,7 +135,7 @@ namespace haze {
                 PtpResponder ptp_responder;
                 ConsoleMainLoop console_main_loop{token};
 
-                while (appletMainLoop() && !token.stop_requested()) {
+                while (true) {
                     /* Disable suspension. */
                     appletSetFocusHandlingMode(AppletFocusHandlingMode_NoSuspend);
 
