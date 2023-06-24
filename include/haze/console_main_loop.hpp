@@ -80,7 +80,6 @@ namespace haze {
 
                 /* Start the delay thread. */
                 R_RETURN(threadStart(std::addressof(m_thread)));
-                R_SUCCEED();
             }
 
             void Finalize() {
@@ -98,7 +97,7 @@ namespace haze {
         protected:
             void ProcessEvent() override {
                 /* Pump applet events, and check if exit was requested. */
-                if (!appletMainLoop() || m_token.stop_requested()) {
+                if (m_token.stop_requested()) {
                     m_reactor->SetResult(haze::ResultStopRequested());
                 }
 
@@ -113,7 +112,7 @@ namespace haze {
                 appletSetFocusHandlingMode(AppletFocusHandlingMode_SuspendHomeSleepNotify);
 
                 /* Pump applet events. */
-                while (appletMainLoop() && !token.stop_requested()) {
+                while (!token.stop_requested()) {
                     /* Check if focus was regained. */
                     if (appletGetFocusState() != AppletFocusState_Background) {
                         return true;
