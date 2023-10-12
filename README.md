@@ -20,7 +20,7 @@ Here is an example for your c/c++ project:
 
 int main(int argc, char** argv) {
     appletLockExit(); // block exit until everything is cleaned up
-    hazeInitialize(); // init libhaze (creates thread)
+    hazeInitialize(NULL); // init libhaze without callback (creates thread)
 
     PadState pad;
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
@@ -52,6 +52,7 @@ some changes to haze were made:
 - console_main_loop.hpp was changed to accept a stop_token to allow signalling for exit from another thread.
 - console_main_loop.hpp was changed to remove console gfx code.
 - `SuspendAndWaitForFocus()` loop now sleeps thread instead of spinlooping until focus state changes.
+- added event callback for when files are created, deleted, written and read .
 
 ...and that's it! The rest of haze is unchanged :)
 

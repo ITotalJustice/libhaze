@@ -125,13 +125,13 @@ namespace haze {
                 return false;
             }
         public:
-            static void RunApplication(std::stop_token token) {
+            static void RunApplication(std::stop_token token, HazeCallback callback) {
                 /* Declare the object heap, to hold the database for an active session. */
                 PtpObjectHeap ptp_object_heap;
 
                 /* Declare the event reactor, and components which use it. */
                 EventReactor event_reactor;
-                PtpResponder ptp_responder;
+                PtpResponder ptp_responder{callback};
                 ConsoleMainLoop console_main_loop{token};
 
                 while (true) {

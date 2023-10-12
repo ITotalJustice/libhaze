@@ -23,14 +23,15 @@ Thread haze_thread{};
 std::mutex mutex;
 std::stop_source stop_source{};
 bool is_running{};
+HazeCallback callback{};
 
 void thread_func(void* arg) {
-    haze::ConsoleMainLoop::RunApplication(stop_source.get_token());
+    haze::ConsoleMainLoop::RunApplication(stop_source.get_token(), callback);
 }
 
 } // namespace
 
-extern "C" bool hazeInitialize() {
+extern "C" bool hazeInitialize(HazeCallback _callback) {
     std::scoped_lock lock{mutex};
     if (is_running) {
         return false;
@@ -42,6 +43,7 @@ extern "C" bool hazeInitialize() {
     /* Load device firmware version and serial number. */
     HAZE_R_ABORT_UNLESS(haze::LoadDeviceProperties());
 
+    callback = _callback;
     /* Run the application. */
     if (R_FAILED(threadCreate(&haze_thread, thread_func, nullptr, nullptr, 1024*32, 0x2C, -2))) {
         return false;
