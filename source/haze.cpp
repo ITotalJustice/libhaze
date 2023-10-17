@@ -19,52 +19,53 @@
 
 namespace {
 
-Thread haze_thread{};
-std::mutex mutex;
-std::stop_source stop_source{};
-bool is_running{};
-HazeCallback callback{};
+Thread g_haze_thread{};
+std::mutex g_mutex;
+std::stop_source g_stop_source{};
+bool g_is_running{};
+HazeCallback g_callback{};
 
 void thread_func(void* arg) {
-    haze::ConsoleMainLoop::RunApplication(stop_source.get_token(), callback);
+    haze::ConsoleMainLoop::RunApplication(g_stop_source.get_token(), g_callback);
 }
 
 } // namespace
 
-extern "C" bool hazeInitialize(HazeCallback _callback) {
-    std::scoped_lock lock{mutex};
-    if (is_running) {
+extern "C" bool hazeInitialize(HazeCallback callback) {
+    std::scoped_lock lock{g_mutex};
+    if (g_is_running) {
         return false;
     }
 
     /* Reset stop token */
-    stop_source = {};
+    g_stop_source = {};
 
     /* Load device firmware version and serial number. */
     HAZE_R_ABORT_UNLESS(haze::LoadDeviceProperties());
 
-    callback = _callback;
+    g_callback = callback;
     /* Run the application. */
-    if (R_FAILED(threadCreate(&haze_thread, thread_func, nullptr, nullptr, 1024*32, 0x2C, -2))) {
+    if (R_FAILED(threadCreate(&g_haze_thread, thread_func, nullptr, nullptr, 1024*32, 0x2C, -2))) {
         return false;
     }
 
-    if (R_FAILED(threadStart(&haze_thread))) {
-        threadClose(&haze_thread);
+    if (R_FAILED(threadStart(&g_haze_thread))) {
+        threadClose(&g_haze_thread);
         return false;
     }
 
-    return is_running = true;
+    return g_is_running = true;
 }
 
 extern "C" void hazeExit() {
-    std::scoped_lock lock{mutex};
-    if (!is_running) {
+    std::scoped_lock lock{g_mutex};
+    if (!g_is_running) {
         return;
     }
 
-    stop_source.request_stop();
-    threadWaitForExit(&haze_thread);
-    threadClose(&haze_thread);
-    is_running = false;
+    g_stop_source.request_stop();
+    threadWaitForExit(&g_haze_thread);
+    threadClose(&g_haze_thread);
+    g_is_running = false;
+    g_callback = nullptr;
 }

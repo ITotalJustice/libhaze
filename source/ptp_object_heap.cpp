@@ -19,8 +19,10 @@ namespace haze {
 
     namespace {
 
-        /* Allow 20MiB for use by libnx. */
-        static constexpr size_t LibnxReservedMemorySize = 20_MB;
+        /* Max heap to allocate. */
+        /* Original Haze allocates the entire heap as there's no reason not to. */
+        /* As we are a library, we want to allocate as little as possible. */
+        static constexpr u32 MaxHeapBlock = 20_MB;
 
     }
 
@@ -33,15 +35,13 @@ namespace haze {
         /* Estimate how much memory we can reserve. */
         size_t mem_used = 0;
         HAZE_R_ABORT_UNLESS(svcGetInfo(std::addressof(mem_used), InfoType_UsedMemorySize, svc::CurrentProcess, 0));
-        HAZE_ASSERT(mem_used > LibnxReservedMemorySize);
-        mem_used -= LibnxReservedMemorySize;
 
         /* Calculate size of blocks. */
         m_heap_block_size = mem_used / NumHeapBlocks;
         HAZE_ASSERT(m_heap_block_size > 0);
 
         /* Allocate the memory. */
-        m_heap_block_size = std::min(1024U*1024U*20U, m_heap_block_size);
+        m_heap_block_size = std::min(MaxHeapBlock, m_heap_block_size);
         for (size_t i = 0; i < NumHeapBlocks; i++) {
             m_heap_blocks[i] = std::malloc(m_heap_block_size);
             HAZE_ASSERT(m_heap_blocks[i] != nullptr);

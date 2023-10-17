@@ -85,6 +85,7 @@ namespace haze {
             Result GetObjectPropDesc(PtpDataParser &dp);
             Result GetObjectPropValue(PtpDataParser &dp);
             Result SetObjectPropValue(PtpDataParser &dp);
+            Result GetObjectPropList(PtpDataParser &dp);
 
             void WriteCallbackSession(HazeCallbackType type);
             void WriteCallbackFile(HazeCallbackType type, const char* name);

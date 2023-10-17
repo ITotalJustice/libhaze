@@ -48,7 +48,7 @@ int main(int argc, char** argv) {
 
 some changes to haze were made:
 
-- instead of [allocating the entire heap](https://github.com/Atmosphere-NX/Atmosphere/blob/8b88351cb46afab3907e395f40733854fd8de0cf/troposphere/haze/source/ptp_object_heap.cpp#L45) (this failed when used with deko3d), libhaze allocates 2x 20Mib blocks.
+- instead of [allocating the entire heap](https://github.com/Atmosphere-NX/Atmosphere/blob/8b88351cb46afab3907e395f40733854fd8de0cf/troposphere/haze/source/ptp_object_heap.cpp#L45), libhaze allocates 2x 20Mib blocks.
 - console_main_loop.hpp was changed to accept a stop_token to allow signalling for exit from another thread.
 - console_main_loop.hpp was changed to remove console gfx code.
 - `SuspendAndWaitForFocus()` loop now sleeps thread instead of spinlooping until focus state changes.
