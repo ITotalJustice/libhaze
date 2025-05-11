@@ -60,7 +60,7 @@ namespace haze {
         public:
             explicit ConsoleMainLoop(std::stop_token token) : m_reactor(), m_thread(), m_event(), m_cancel_event(), m_token{token} { /* ... */ }
 
-            Result Initialize(EventReactor *reactor, PtpObjectHeap *object_heap) {
+            Result Initialize(EventReactor *reactor, PtpObjectHeap *object_heap, int prio, int cpuid) {
                 /* Register event reactor and heap. */
                 m_reactor     = reactor;
                 m_object_heap = object_heap;
@@ -70,7 +70,7 @@ namespace haze {
                 ueventCreate(std::addressof(m_cancel_event), true);
 
                 /* Create the delay thread with higher priority than the main thread (which runs at priority 0x2c). */
-                R_TRY(threadCreate(std::addressof(m_thread), ConsoleMainLoop::Run, this, nullptr, 4_KB, 0x2b, svc::IdealCoreUseProcessValue));
+                R_TRY(threadCreate(std::addressof(m_thread), ConsoleMainLoop::Run, this, nullptr, 4_KB, prio-1, cpuid));
 
                 /* Ensure we close the thread on failure. */
                 ON_RESULT_FAILURE { threadClose(std::addressof(m_thread)); };
@@ -125,7 +125,7 @@ namespace haze {
                 return false;
             }
         public:
-            static void RunApplication(std::stop_token token, HazeCallback callback, int cpuid = -2, int prio = 0x2C) {
+            static void RunApplication(std::stop_token token, HazeCallback callback, int prio, int cpuid) {
                 /* Declare the object heap, to hold the database for an active session. */
                 PtpObjectHeap ptp_object_heap;
 
@@ -149,7 +149,7 @@ namespace haze {
 
                         /* Configure the PTP responder and console main loop. */
                         ptp_responder.Initialize(std::addressof(event_reactor), std::addressof(ptp_object_heap));
-                        console_main_loop.Initialize(std::addressof(event_reactor), std::addressof(ptp_object_heap));
+                        console_main_loop.Initialize(std::addressof(event_reactor), std::addressof(ptp_object_heap), prio, cpuid);
 
                         /* Ensure we maintain a clean state on exit. */
                         ON_SCOPE_EXIT {

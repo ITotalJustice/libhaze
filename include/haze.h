@@ -48,7 +48,7 @@ typedef struct {
 typedef void(*HazeCallback)(const HazeCallbackData* data);
 
 /* Callback is optional */
-bool hazeInitialize(HazeCallback callback, int cpuid, int prio);
+bool hazeInitialize(HazeCallback callback, int prio, int cpuid);
 void hazeExit();
 
 #ifdef __cplusplus

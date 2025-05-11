@@ -28,12 +28,12 @@ static int g_cpuid{};
 static int g_prio{};
 
 void thread_func(void* arg) {
-    haze::ConsoleMainLoop::RunApplication(g_stop_source.get_token(), g_callback);
+    haze::ConsoleMainLoop::RunApplication(g_stop_source.get_token(), g_callback, g_prio, g_cpuid);
 }
 
 } // namespace
 
-extern "C" bool hazeInitialize(HazeCallback callback, int cpuid, int prio) {
+extern "C" bool hazeInitialize(HazeCallback callback, int prio, int cpuid) {
     std::scoped_lock lock{g_mutex};
     if (g_is_running) {
         return false;
@@ -46,8 +46,11 @@ extern "C" bool hazeInitialize(HazeCallback callback, int cpuid, int prio) {
     HAZE_R_ABORT_UNLESS(haze::LoadDeviceProperties());
 
     g_callback = callback;
+    g_prio = prio;
+    g_cpuid = cpuid;
+
     /* Run the application. */
-    if (R_FAILED(threadCreate(&g_haze_thread, thread_func, nullptr, nullptr, 1024*32, cpuid, prio))) {
+    if (R_FAILED(threadCreate(&g_haze_thread, thread_func, nullptr, nullptr, 1024*32, prio, cpuid))) {
         return false;
     }
 
