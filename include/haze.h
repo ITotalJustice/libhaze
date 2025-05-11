@@ -22,12 +22,12 @@ typedef enum {
 } HazeCallbackType;
 
 typedef struct {
-    char filename[256];
+    char filename[0x301];
 } HazeCallbackDataFile;
 
 typedef struct {
-    char filename[256];
-    char newname[256];
+    char filename[0x301];
+    char newname[0x301];
 } HazeCallbackDataRename;
 
 typedef struct {
@@ -48,7 +48,7 @@ typedef struct {
 typedef void(*HazeCallback)(const HazeCallbackData* data);
 
 /* Callback is optional */
-bool hazeInitialize(HazeCallback callback);
+bool hazeInitialize(HazeCallback callback, int cpuid, int prio);
 void hazeExit();
 
 #ifdef __cplusplus

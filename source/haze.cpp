@@ -24,6 +24,8 @@ std::mutex g_mutex;
 std::stop_source g_stop_source{};
 bool g_is_running{};
 HazeCallback g_callback{};
+static int g_cpuid{};
+static int g_prio{};
 
 void thread_func(void* arg) {
     haze::ConsoleMainLoop::RunApplication(g_stop_source.get_token(), g_callback);
@@ -31,7 +33,7 @@ void thread_func(void* arg) {
 
 } // namespace
 
-extern "C" bool hazeInitialize(HazeCallback callback) {
+extern "C" bool hazeInitialize(HazeCallback callback, int cpuid, int prio) {
     std::scoped_lock lock{g_mutex};
     if (g_is_running) {
         return false;
@@ -45,7 +47,7 @@ extern "C" bool hazeInitialize(HazeCallback callback) {
 
     g_callback = callback;
     /* Run the application. */
-    if (R_FAILED(threadCreate(&g_haze_thread, thread_func, nullptr, nullptr, 1024*32, 0x2C, -2))) {
+    if (R_FAILED(threadCreate(&g_haze_thread, thread_func, nullptr, nullptr, 1024*32, cpuid, prio))) {
         return false;
     }
 

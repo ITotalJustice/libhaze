@@ -125,7 +125,7 @@ namespace haze {
                 return false;
             }
         public:
-            static void RunApplication(std::stop_token token, HazeCallback callback) {
+            static void RunApplication(std::stop_token token, HazeCallback callback, int cpuid = -2, int prio = 0x2C) {
                 /* Declare the object heap, to hold the database for an active session. */
                 PtpObjectHeap ptp_object_heap;
 
