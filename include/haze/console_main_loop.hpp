@@ -69,8 +69,12 @@ namespace haze {
                 ueventCreate(std::addressof(m_event), true);
                 ueventCreate(std::addressof(m_cancel_event), true);
 
-                /* Create the delay thread with higher priority than the main thread (which runs at priority 0x2c). */
-                R_TRY(threadCreate(std::addressof(m_thread), ConsoleMainLoop::Run, this, nullptr, 4_KB, prio-1, cpuid));
+                /* Check if we are running preemptive, if so, do not modify the prio. */
+                if (prio != 0x3B && prio != 0x3F) {
+                    /* Create the thread with higher priority than the main thread. */
+                    prio--;
+                }
+                R_TRY(threadCreate(std::addressof(m_thread), ConsoleMainLoop::Run, this, nullptr, 4_KB, prio, cpuid));
 
                 /* Ensure we close the thread on failure. */
                 ON_RESULT_FAILURE { threadClose(std::addressof(m_thread)); };
