@@ -36,19 +36,24 @@ namespace haze {
 
     }
 
-    Result PtpResponder::Initialize(EventReactor *reactor, PtpObjectHeap *object_heap) {
+    Result PtpResponder::Initialize(EventReactor *reactor, PtpObjectHeap *object_heap, const FsEntries& entries) {
         m_object_heap = object_heap;
         m_buffers = GetBuffers();
+        m_fs_entries.clear();
+
+        u32 storage_id = StorageId_DefaultStorage;
+
+        for (const auto& e : entries) {
+            m_fs_entries.emplace_back(storage_id, e);
+            storage_id--;
+        }
 
         /* Configure fs proxy. */
-        m_fs.Initialize(reactor, fsdevGetDeviceFileSystem("sdmc"));
-
         R_RETURN(m_usb_server.Initialize(std::addressof(MtpInterfaceInfo), SwitchMtpIdVendor, SwitchMtpIdProduct, reactor));
     }
 
     void PtpResponder::Finalize() {
         m_usb_server.Finalize();
-        m_fs.Finalize();
     }
 
     Result PtpResponder::LoopProcess() {
@@ -178,43 +183,43 @@ namespace haze {
     }
 
     #if 0
-    void PtpResponder::WriteCallbackSession(HazeCallbackType type) {}
-    void PtpResponder::WriteCallbackFile(HazeCallbackType type, const char* name) {}
-    void PtpResponder::WriteCallbackRename(HazeCallbackType type, const char* name, const char* newname) {}
-    void PtpResponder::WriteCallbackProgress(HazeCallbackType type, s64 offset, s64 size) {}
+    void PtpResponder::WriteCallbackSession(CallbackType type) {}
+    void PtpResponder::WriteCallbackFile(CallbackType type, const char* name) {}
+    void PtpResponder::WriteCallbackRename(CallbackType type, const char* name, const char* newname) {}
+    void PtpResponder::WriteCallbackProgress(CallbackType type, s64 offset, s64 size) {}
     #else
-    void PtpResponder::WriteCallbackSession(HazeCallbackType type) {
+    void PtpResponder::WriteCallbackSession(CallbackType type) {
         if (!m_callback) {
             return;
         }
-        HazeCallbackData data{type};
+        CallbackData data{type};
         m_callback(&data);
     }
 
-    void PtpResponder::WriteCallbackFile(HazeCallbackType type, const char* name) {
+    void PtpResponder::WriteCallbackFile(CallbackType type, const char* name) {
         if (!m_callback) {
             return;
         }
-        HazeCallbackData data{type};
+        CallbackData data{type};
         std::strncpy(data.file.filename, FixName(name), sizeof(data.file.filename)-1);
         m_callback(&data);
     }
 
-    void PtpResponder::WriteCallbackRename(HazeCallbackType type, const char* name, const char* newname) {
+    void PtpResponder::WriteCallbackRename(CallbackType type, const char* name, const char* newname) {
         if (!m_callback) {
             return;
         }
-        HazeCallbackData data{type};
+        CallbackData data{type};
         std::strncpy(data.rename.filename, FixName(name), sizeof(data.rename.filename)-1);
         std::strncpy(data.rename.newname, FixName(newname), sizeof(data.rename.newname)-1);
         m_callback(&data);
     }
 
-    void PtpResponder::WriteCallbackProgress(HazeCallbackType type, s64 offset, s64 size) {
+    void PtpResponder::WriteCallbackProgress(CallbackType type, s64 offset, s64 size) {
         if (!m_callback) {
             return;
         }
-        HazeCallbackData data{type};
+        CallbackData data{type};
         data.progress.offset = offset;
         data.progress.size = size;
         m_callback(&data);

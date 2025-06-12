@@ -4,46 +4,6 @@ libhaze is [haze](https://github.com/Atmosphere-NX/Atmosphere/tree/master/tropos
 
 ---
 
-## how to use
-
-Add the `source` and `include` folders to your makefile. This may look something like:
-```mk
-SOURCES     += src/libhaze/source
-INCLUDES    += src/libhaze/include
-```
-
-Here is an example for your c/c++ project:
-
-```c
-#include <switch.h>
-#include "haze.h"
-
-int main(int argc, char** argv) {
-    appletLockExit(); // block exit until everything is cleaned up
-    hazeInitialize(NULL); // init libhaze without callback (creates thread)
-
-    PadState pad;
-    padConfigureInput(1, HidNpadStyleSet_NpadStandard);
-    padInitializeDefault(&pad);
-
-    // loop until + button is pressed
-    while (appletMainLoop()) {
-        padUpdate(&pad);
-
-        const u64 kDown = padGetButtonsDown(&pad);
-        if (kDown & HidNpadButton_Plus)
-            break; // break in order to return to hbmenu
-
-        svcSleepThread(1000000);
-    }
-
-    hazeExit(); // signals libhaze to exit, closes thread
-    appletUnlockExit(); // unblocks exit to cleanly exit
-}
-```
-
----
-
 ## changes
 
 some changes to haze were made:
@@ -52,20 +12,8 @@ some changes to haze were made:
 - console_main_loop.hpp was changed to accept a stop_token to allow signalling for exit from another thread.
 - console_main_loop.hpp was changed to remove console gfx code.
 - `SuspendAndWaitForFocus()` loop now sleeps thread instead of spinlooping until focus state changes.
-- added event callback for when files are created, deleted, written and read .
-
-...and that's it! The rest of haze is unchanged :)
-
----
-
-## Todo
-
-in no particular order:
-
-- replace vapours
-- get connection info
-- workflow
-- examples
+- added event callback for when files are created, deleted, written and read.
+- add support for custom mount points, rather than just mounting sdmc.
 
 ---
 

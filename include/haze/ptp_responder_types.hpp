@@ -38,7 +38,7 @@ namespace haze {
     constexpr auto MtpDeviceModel          = "Nintendo Switch";
 
     enum StorageId : u32 {
-        StorageId_SdmcFs = 0xffffffffu - 1,
+        StorageId_DefaultStorage = 0xffffffffu - 1,
     };
 
     constexpr PtpOperationCode SupportedOperationCodes[] = {
@@ -93,10 +93,6 @@ namespace haze {
         return false;
     }
 
-    constexpr const StorageId SupportedStorageIds[] = {
-        StorageId_SdmcFs,
-    };
-
     struct PtpStorageInfo {
         PtpStorageType storage_type;
         PtpFilesystemType filesystem_type;
@@ -142,7 +138,7 @@ namespace haze {
     };
 
     constexpr PtpObjectInfo DefaultObjectInfo = {
-        .storage_id             = StorageId_SdmcFs,
+        .storage_id             = StorageId_DefaultStorage,
         .object_format          = {},
         .protection_status      = PtpProtectionStatus_NoProtection,
         .object_compressed_size = 0,

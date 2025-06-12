@@ -26,11 +26,16 @@ namespace haze {
 
     class PtpDataParser;
 
+    struct FsEntry {
+        u32 storage_id;
+        std::shared_ptr<FileSystemProxyImpl> impl;
+    };
+
     class PtpResponder final {
         private:
-            HazeCallback m_callback;
+            Callback m_callback;
             AsyncUsbServer m_usb_server;
-            FileSystemProxy m_fs;
+            std::vector<FsEntry> m_fs_entries;
             PtpUsbBulkContainer m_request_header;
             PtpObjectHeap *m_object_heap;
             PtpBuffers* m_buffers;
@@ -39,13 +44,26 @@ namespace haze {
 
             PtpObjectDatabase m_object_database;
         public:
-            constexpr explicit PtpResponder(HazeCallback callback = nullptr) : m_callback{callback}, m_usb_server(), m_fs(), m_request_header(), m_object_heap(), m_buffers(), m_send_object_id(), m_session_open(), m_object_database() { /* ... */ }
+            constexpr explicit PtpResponder(Callback callback = nullptr) : m_callback{callback}, m_usb_server(), m_fs_entries(), m_request_header(), m_object_heap(), m_buffers(), m_send_object_id(), m_session_open(), m_object_database() { /* ... */ }
 
-            Result Initialize(EventReactor *reactor, PtpObjectHeap *object_heap);
+            Result Initialize(EventReactor *reactor, PtpObjectHeap *object_heap, const FsEntries& entries);
             void Finalize();
         public:
             Result LoopProcess();
         private:
+            auto& Fs(u32 storage_id) {
+                const auto it = std::find_if(m_fs_entries.cbegin(), m_fs_entries.cend(), [storage_id](auto& e){
+                    return storage_id == e.storage_id;
+                });
+
+                // this will never fail, so we unconditionally return.
+                return *(it->impl.get());
+            }
+
+            auto& Fs(const PtpObject* obj) {
+                return Fs(obj->GetStorageId());
+            }
+
             /* Request handling. */
             Result HandleRequest();
             Result HandleRequestImpl();
@@ -87,10 +105,10 @@ namespace haze {
             Result SetObjectPropValue(PtpDataParser &dp);
             Result GetObjectPropList(PtpDataParser &dp);
 
-            void WriteCallbackSession(HazeCallbackType type);
-            void WriteCallbackFile(HazeCallbackType type, const char* name);
-            void WriteCallbackRename(HazeCallbackType type, const char* name, const char* newname);
-            void WriteCallbackProgress(HazeCallbackType type, s64 offset, s64 size);
+            void WriteCallbackSession(CallbackType type);
+            void WriteCallbackFile(CallbackType type, const char* name);
+            void WriteCallbackRename(CallbackType type, const char* name, const char* newname);
+            void WriteCallbackProgress(CallbackType type, s64 offset, s64 size);
     };
 
 }

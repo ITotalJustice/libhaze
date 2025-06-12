@@ -37,7 +37,7 @@ namespace haze {
         m_object_heap = nullptr;
     }
 
-    Result PtpObjectDatabase::CreateOrFindObject(const char *parent_name, const char *name, u32 parent_id, PtpObject **out_object) {
+    Result PtpObjectDatabase::CreateOrFindObject(const char *parent_name, const char *name, u32 parent_id, u32 storage_id, PtpObject **out_object) {
         constexpr auto separator = "/";
 
         /* Calculate length of the new name with null terminator. */
@@ -73,6 +73,7 @@ namespace haze {
 
         /* Set object properties. */
         object->m_parent_id = parent_id;
+        object->m_storage_id = storage_id;
         object->m_object_id = 0;
 
         /* Set output. */
@@ -119,10 +120,10 @@ namespace haze {
         m_object_heap->Deallocate(object, sizeof(PtpObject) + std::strlen(object->GetName()) + 1);
     }
 
-    Result PtpObjectDatabase::CreateAndRegisterObjectId(const char *parent_name, const char *name, u32 parent_id, u32 *out_object_id) {
+    Result PtpObjectDatabase::CreateAndRegisterObjectId(const char *parent_name, const char *name, u32 parent_id, u32 storage_id, u32 *out_object_id) {
         /* Try to create the object. */
         PtpObject *object;
-        R_TRY(this->CreateOrFindObject(parent_name, name, parent_id, std::addressof(object)));
+        R_TRY(this->CreateOrFindObject(parent_name, name, parent_id, storage_id, std::addressof(object)));
 
         /* We succeeded, so register it. */
         this->RegisterObject(object);

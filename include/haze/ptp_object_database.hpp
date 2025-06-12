@@ -27,11 +27,13 @@ namespace haze {
             util::IntrusiveRedBlackTreeNode m_object_id_node;
             u32 m_parent_id;
             u32 m_object_id;
+            u32 m_storage_id;
             char m_name[];
         public:
             const char *GetName()  const { return m_name; }
             u32 GetParentId()      const { return m_parent_id; }
             u32 GetObjectId()      const { return m_object_id; }
+            u32 GetStorageId()      const { return m_storage_id; }
         public:
             bool GetIsRegistered() const { return m_object_id != 0; }
             void Register(u32 object_id) { m_object_id = object_id; }
@@ -93,12 +95,12 @@ namespace haze {
             void Finalize();
         public:
             /* Object database API. */
-            Result CreateOrFindObject(const char *parent_name, const char *name, u32 parent_id, PtpObject **out_object);
+            Result CreateOrFindObject(const char *parent_name, const char *name, u32 parent_id, u32 storage_id, PtpObject **out_object);
             void RegisterObject(PtpObject *object, u32 desired_id = 0);
             void UnregisterObject(PtpObject *object);
             void DeleteObject(PtpObject *obj);
 
-            Result CreateAndRegisterObjectId(const char *parent_name, const char *name, u32 parent_id, u32 *out_object_id);
+            Result CreateAndRegisterObjectId(const char *parent_name, const char *name, u32 parent_id, u32 storage_id, u32 *out_object_id);
         public:
             PtpObject *GetObjectById(u32 object_id);
             PtpObject *GetObjectByName(const char *name);

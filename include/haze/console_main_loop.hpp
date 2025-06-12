@@ -129,7 +129,7 @@ namespace haze {
                 return false;
             }
         public:
-            static void RunApplication(std::stop_token token, HazeCallback callback, int prio, int cpuid) {
+            static void RunApplication(std::stop_token token, Callback callback, int prio, int cpuid, const FsEntries& entries) {
                 /* Declare the object heap, to hold the database for an active session. */
                 PtpObjectHeap ptp_object_heap;
 
@@ -152,7 +152,7 @@ namespace haze {
                         event_reactor.SetResult(ResultSuccess());
 
                         /* Configure the PTP responder and console main loop. */
-                        ptp_responder.Initialize(std::addressof(event_reactor), std::addressof(ptp_object_heap));
+                        ptp_responder.Initialize(std::addressof(event_reactor), std::addressof(ptp_object_heap), entries);
                         console_main_loop.Initialize(std::addressof(event_reactor), std::addressof(ptp_object_heap), prio, cpuid);
 
                         /* Ensure we maintain a clean state on exit. */

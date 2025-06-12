@@ -68,11 +68,19 @@ namespace haze {
                     }
                     break;
                 case PtpObjectPropertyCode_StorageId:
+                    {
+                        R_TRY(db.Add(PtpDataTypeCode_U32));
+                        R_TRY(db.Add(PtpPropertyGetSetFlag_Get));
+                        // TODO(TJ): what should this value here be?
+                        R_TRY(db.Add(StorageId_DefaultStorage));
+                    }
+                    break;
                 case PtpObjectPropertyCode_ParentObject:
                     {
                         R_TRY(db.Add(PtpDataTypeCode_U32));
                         R_TRY(db.Add(PtpPropertyGetSetFlag_Get));
-                        R_TRY(db.Add(StorageId_SdmcFs));
+                        // TODO(TJ): what should this value here be?
+                        R_TRY(db.Add(StorageId_DefaultStorage));
                     }
                     break;
                 case PtpObjectPropertyCode_ObjectFormat:
@@ -122,7 +130,7 @@ namespace haze {
 
         /* Define helper for getting the object type. */
         const auto GetObjectType = [&] (FsDirEntryType *out_entry_type) {
-            R_RETURN(m_fs.GetEntryType(obj->GetName(), out_entry_type));
+            R_RETURN(Fs(obj).GetEntryType(obj->GetName(), out_entry_type));
         };
 
         /* Define helper for getting the object size. */
@@ -138,12 +146,12 @@ namespace haze {
 
             /* Otherwise, open as a file. */
             FsFile file;
-            R_TRY(m_fs.OpenFile(obj->GetName(), FsOpenMode_Read, std::addressof(file)));
+            R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Read, std::addressof(file)));
 
             /* Ensure we maintain a clean state on exit. */
-            ON_SCOPE_EXIT { m_fs.CloseFile(std::addressof(file)); };
+            ON_SCOPE_EXIT { Fs(obj).CloseFile(std::addressof(file)); };
 
-            R_RETURN(m_fs.GetFileSize(std::addressof(file), out_size));
+            R_RETURN(Fs(obj).GetFileSize(std::addressof(file), out_size));
         };
 
         /* Begin writing the requested object property. */
@@ -165,7 +173,7 @@ namespace haze {
                     break;
                 case PtpObjectPropertyCode_StorageId:
                     {
-                        R_TRY(db.Add(StorageId_SdmcFs));
+                        R_TRY(db.Add(obj->GetStorageId()));
                     }
                     break;
                 case PtpObjectPropertyCode_ParentObject:
@@ -227,7 +235,7 @@ namespace haze {
 
         /* Define helper for getting the object type. */
         const auto GetObjectType = [&] (FsDirEntryType *out_entry_type) {
-            R_RETURN(m_fs.GetEntryType(obj->GetName(), out_entry_type));
+            R_RETURN(Fs(obj).GetEntryType(obj->GetName(), out_entry_type));
         };
 
         /* Define helper for getting the object size. */
@@ -243,12 +251,12 @@ namespace haze {
 
             /* Otherwise, open as a file. */
             FsFile file;
-            R_TRY(m_fs.OpenFile(obj->GetName(), FsOpenMode_Read, std::addressof(file)));
+            R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Read, std::addressof(file)));
 
             /* Ensure we maintain a clean state on exit. */
-            ON_SCOPE_EXIT { m_fs.CloseFile(std::addressof(file)); };
+            ON_SCOPE_EXIT { Fs(obj).CloseFile(std::addressof(file)); };
 
-            R_RETURN(m_fs.GetFileSize(std::addressof(file), out_size));
+            R_RETURN(Fs(obj).GetFileSize(std::addressof(file), out_size));
         };
 
         /* Define helper for determining if the property should be included. */
@@ -302,7 +310,7 @@ namespace haze {
                     case PtpObjectPropertyCode_StorageId:
                         {
                             R_TRY(db.Add(PtpDataTypeCode_U32));
-                            R_TRY(db.Add(StorageId_SdmcFs));
+                            R_TRY(db.Add(obj->GetStorageId()));
                         }
                         break;
                     case PtpObjectPropertyCode_ParentObject:
@@ -380,7 +388,7 @@ namespace haze {
             *pathsep = '\x00';
             ON_SCOPE_EXIT { *pathsep = '/'; };
 
-            R_TRY(m_object_database.CreateOrFindObject(obj->GetName(), m_buffers->filename_string_buffer, obj->GetParentId(), std::addressof(newobj)));
+            R_TRY(m_object_database.CreateOrFindObject(obj->GetName(), m_buffers->filename_string_buffer, obj->GetParentId(), obj->GetStorageId(), std::addressof(newobj)));
         }
 
         {
@@ -395,15 +403,15 @@ namespace haze {
 
             /* Get the old object type. */
             FsDirEntryType entry_type;
-            R_TRY(m_fs.GetEntryType(obj->GetName(), std::addressof(entry_type)));
+            R_TRY(Fs(obj).GetEntryType(obj->GetName(), std::addressof(entry_type)));
 
             /* Attempt to rename the object on the filesystem. */
             if (entry_type == FsDirEntryType_Dir) {
-                R_TRY(m_fs.RenameDirectory(obj->GetName(), newobj->GetName()));
-                WriteCallbackRename(HazeCallbackType_RenameFolder, obj->GetName(), newobj->GetName());
+                R_TRY(Fs(obj).RenameDirectory(obj->GetName(), newobj->GetName()));
+                WriteCallbackRename(CallbackType_RenameFolder, obj->GetName(), newobj->GetName());
             } else {
-                R_TRY(m_fs.RenameFile(obj->GetName(), newobj->GetName()));
-                WriteCallbackRename(HazeCallbackType_RenameFile, obj->GetName(), newobj->GetName());
+                R_TRY(Fs(obj).RenameFile(obj->GetName(), newobj->GetName()));
+                WriteCallbackRename(CallbackType_RenameFile, obj->GetName(), newobj->GetName());
             }
         }
 

@@ -28,6 +28,7 @@
 #include <stddef.h>
 
 #include <switch.h>
+#include "haze.h"
 #include <haze/results.hpp>
 #include <haze/assert.hpp>
 

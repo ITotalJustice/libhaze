@@ -58,13 +58,18 @@ namespace haze {
         m_object_database.Initialize(m_object_heap);
 
         /* Create the root storages. */
-        PtpObject *object;
-        R_TRY(m_object_database.CreateOrFindObject("", "", PtpGetObjectHandles_RootParent, std::addressof(object)));
+        for (const auto& fs : m_fs_entries) {
+            const auto name = fs.impl->GetName();
+            const auto storage_id = fs.storage_id;
 
-        /* Register the root storages. */
-        m_object_database.RegisterObject(object, StorageId_SdmcFs);
+            PtpObject *object;
+            R_TRY(m_object_database.CreateOrFindObject("", name, PtpGetObjectHandles_RootParent, storage_id, std::addressof(object)));
 
-        WriteCallbackSession(HazeCallbackType_OpenSession);
+            /* Register the root storages. */
+            m_object_database.RegisterObject(object, storage_id);
+        }
+
+        WriteCallbackSession(CallbackType_OpenSession);
 
         /* Write the success response. */
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
@@ -75,7 +80,7 @@ namespace haze {
 
         this->ForceCloseSession();
 
-        WriteCallbackSession(HazeCallbackType_CloseSession);
+        WriteCallbackSession(CallbackType_CloseSession);
 
         /* Write the success response. */
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
@@ -86,9 +91,14 @@ namespace haze {
 
         PtpDataBuilder db(m_buffers->usb_bulk_write_buffer, std::addressof(m_usb_server));
 
+        std::vector<u32> storage_ids;
+        for (const auto& e : m_fs_entries) {
+            storage_ids.emplace_back(e.storage_id);
+        }
+
         /* Write the storage ID array. */
         R_TRY(db.WriteVariableLengthData(m_request_header, [&] {
-            R_RETURN(db.AddArray(SupportedStorageIds, util::size(SupportedStorageIds)));
+            R_RETURN(db.AddArray(storage_ids.data(), std::size(storage_ids)));
         }));
 
         /* Write the success response. */
@@ -104,23 +114,19 @@ namespace haze {
         R_TRY(dp.Read(std::addressof(storage_id)));
         R_TRY(dp.Finalize());
 
-        /* Get the info from fs. */
-        switch (storage_id) {
-            case StorageId_SdmcFs:
-                {
-                    s64 total_space, free_space;
-                    R_TRY(m_fs.GetTotalSpace("/", std::addressof(total_space)));
-                    R_TRY(m_fs.GetFreeSpace("/", std::addressof(free_space)));
+        const auto it = std::find_if(m_fs_entries.cbegin(), m_fs_entries.cend(), [storage_id](auto& e){
+            return storage_id == e.storage_id;
+        });
+        R_UNLESS(it != m_fs_entries.cend(), haze::ResultInvalidStorageId());
 
-                    storage_info.max_capacity         = total_space;
-                    storage_info.free_space_in_bytes  = free_space;
-                    storage_info.free_space_in_images = 0;
-                    storage_info.storage_description  = "SD Card";
-                }
-                break;
-            default:
-                R_THROW(haze::ResultInvalidStorageId());
-        }
+        s64 total_space, free_space;
+        R_TRY(Fs(storage_id).GetTotalSpace("/", std::addressof(total_space)));
+        R_TRY(Fs(storage_id).GetFreeSpace("/", std::addressof(free_space)));
+
+        storage_info.max_capacity         = total_space;
+        storage_info.free_space_in_bytes  = free_space;
+        storage_info.free_space_in_images = 0;
+        storage_info.storage_description = it->impl->GetDisplayName();
 
         /* Write the storage info data. */
         R_TRY(db.WriteVariableLengthData(m_request_header, [&] () {
@@ -152,7 +158,7 @@ namespace haze {
 
         /* Handle top-level requests. */
         if (storage_id == PtpGetObjectHandles_AllStorage) {
-            storage_id = StorageId_SdmcFs;
+            storage_id = StorageId_DefaultStorage;
         }
 
         /* Rewrite requests for enumerating storage directories. */
@@ -166,14 +172,14 @@ namespace haze {
 
         /* Try to read the object as a directory. */
         FsDir dir;
-        R_TRY(m_fs.OpenDirectory(obj->GetName(), FsDirOpenMode_ReadDirs | FsDirOpenMode_ReadFiles, std::addressof(dir)));
+        R_TRY(Fs(obj).OpenDirectory(obj->GetName(), FsDirOpenMode_ReadDirs | FsDirOpenMode_ReadFiles, std::addressof(dir)));
 
         /* Ensure we maintain a clean state on exit. */
-        ON_SCOPE_EXIT { m_fs.CloseDirectory(std::addressof(dir)); };
+        ON_SCOPE_EXIT { Fs(obj).CloseDirectory(std::addressof(dir)); };
 
         /* Count how many entries are in the directory. */
         s64 entry_count = 0;
-        R_TRY(m_fs.GetDirectoryEntryCount(std::addressof(dir), std::addressof(entry_count)));
+        R_TRY(Fs(obj).GetDirectoryEntryCount(std::addressof(dir), std::addressof(entry_count)));
 
         /* Begin writing. */
         R_TRY(db.AddDataHeader(m_request_header, sizeof(u32) + (entry_count * sizeof(u32))));
@@ -185,14 +191,14 @@ namespace haze {
         while (true) {
             /* Get the next batch. */
             s64 read_count = 0;
-            R_TRY(m_fs.ReadDirectory(std::addressof(dir), std::addressof(read_count), DirectoryReadSize, m_buffers->file_system_entry_buffer));
+            R_TRY(Fs(obj).ReadDirectory(std::addressof(dir), std::addressof(read_count), DirectoryReadSize, m_buffers->file_system_entry_buffer));
 
             /* Write to output. */
             for (s64 i = 0; i < read_count; i++) {
                 const char *name = m_buffers->file_system_entry_buffer[i].name;
                 u32 handle;
 
-                R_TRY(m_object_database.CreateAndRegisterObjectId(obj->GetName(), name, obj->GetObjectId(), std::addressof(handle)));
+                R_TRY(m_object_database.CreateAndRegisterObjectId(obj->GetName(), name, obj->GetObjectId(), obj->GetStorageId(), std::addressof(handle)));
                 R_TRY(db.Add(handle));
             }
 
@@ -224,26 +230,30 @@ namespace haze {
         /* Build info about the object. */
         PtpObjectInfo object_info(DefaultObjectInfo);
 
-        if (object_id == StorageId_SdmcFs) {
+        const auto it = std::find_if(m_fs_entries.cbegin(), m_fs_entries.cend(), [object_id](auto& e){
+            return object_id == e.storage_id;
+        });
+
+        if (it != m_fs_entries.cend()) {
             /* The SD Card directory has some special properties. */
             object_info.object_format    = PtpObjectFormatCode_Association;
             object_info.association_type = PtpAssociationType_GenericFolder;
-            object_info.filename         = "SD Card";
+            object_info.filename         = it->impl->GetDisplayName();
         } else {
             /* Figure out what type of object this is. */
             FsDirEntryType entry_type;
-            R_TRY(m_fs.GetEntryType(obj->GetName(), std::addressof(entry_type)));
+            R_TRY(Fs(obj).GetEntryType(obj->GetName(), std::addressof(entry_type)));
 
             /* Get the size, if we are requesting info about a file. */
             s64 size = 0;
             if (entry_type == FsDirEntryType_File) {
                 FsFile file;
-                R_TRY(m_fs.OpenFile(obj->GetName(), FsOpenMode_Read, std::addressof(file)));
+                R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Read, std::addressof(file)));
 
                 /* Ensure we maintain a clean state on exit. */
-                ON_SCOPE_EXIT { m_fs.CloseFile(std::addressof(file)); };
+                ON_SCOPE_EXIT { Fs(obj).CloseFile(std::addressof(file)); };
 
-                R_TRY(m_fs.GetFileSize(std::addressof(file), std::addressof(size)));
+                R_TRY(Fs(obj).GetFileSize(std::addressof(file), std::addressof(size)));
             }
 
             object_info.filename               = std::strrchr(obj->GetName(), '/') + 1;
@@ -302,27 +312,27 @@ namespace haze {
 
         /* Lock the object as a file. */
         FsFile file;
-        R_TRY(m_fs.OpenFile(obj->GetName(), FsOpenMode_Read, std::addressof(file)));
+        R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Read, std::addressof(file)));
 
         /* Ensure we maintain a clean state on exit. */
-        ON_SCOPE_EXIT { m_fs.CloseFile(std::addressof(file)); };
+        ON_SCOPE_EXIT { Fs(obj).CloseFile(std::addressof(file)); };
 
         /* Get the file's size. */
         s64 size = 0;
-        R_TRY(m_fs.GetFileSize(std::addressof(file), std::addressof(size)));
+        R_TRY(Fs(obj).GetFileSize(std::addressof(file), std::addressof(size)));
 
         /* Send the header and file size. */
         R_TRY(db.AddDataHeader(m_request_header, size));
 
-        WriteCallbackFile(HazeCallbackType_ReadBegin, obj->GetName());
-        ON_SCOPE_EXIT { WriteCallbackFile(HazeCallbackType_ReadEnd, obj->GetName()); };
+        WriteCallbackFile(CallbackType_ReadBegin, obj->GetName());
+        ON_SCOPE_EXIT { WriteCallbackFile(CallbackType_ReadEnd, obj->GetName()); };
 
         /* Begin reading the file, writing data to the builder as we progress. */
         s64 offset = 0;
         while (true) {
             /* Get the next batch. */
             u64 bytes_read;
-            R_TRY(m_fs.ReadFile(std::addressof(file), offset, m_buffers->file_system_data_buffer, FsBufferSize, FsReadOption_None, std::addressof(bytes_read)));
+            R_TRY(Fs(obj).ReadFile(std::addressof(file), offset, m_buffers->file_system_data_buffer, FsBufferSize, FsReadOption_None, std::addressof(bytes_read)));
 
             offset += bytes_read;
 
@@ -330,7 +340,7 @@ namespace haze {
             R_TRY(db.AddBuffer(m_buffers->file_system_data_buffer, bytes_read));
 
             /* Log progress. */
-            WriteCallbackProgress(HazeCallbackType_ReadProgress, offset, size);
+            WriteCallbackProgress(CallbackType_ReadProgress, offset, size);
 
             /* If we read fewer bytes than the batch size, we're done. */
             if (bytes_read < FsBufferSize) {
@@ -395,12 +405,12 @@ namespace haze {
 
         /* Make a new object with the intended name. */
         PtpNewObjectInfo new_object_info;
-        new_object_info.storage_id       = StorageId_SdmcFs;
+        new_object_info.storage_id       = parentobj->GetObjectId();
         new_object_info.parent_object_id = parent_object == storage_id ? 0 : parent_object;
 
         /* Create the object in the database. */
         PtpObject *obj;
-        R_TRY(m_object_database.CreateOrFindObject(parentobj->GetName(), m_buffers->filename_string_buffer, parentobj->GetObjectId(), std::addressof(obj)));
+        R_TRY(m_object_database.CreateOrFindObject(parentobj->GetName(), m_buffers->filename_string_buffer, parentobj->GetObjectId(), parentobj->GetStorageId(), std::addressof(obj)));
 
         /* Ensure we maintain a clean state on failure. */
         ON_RESULT_FAILURE { m_object_database.DeleteObject(obj); };
@@ -411,12 +421,12 @@ namespace haze {
 
         /* Create the object on the filesystem. */
         if (info.object_format == PtpObjectFormatCode_Association) {
-            R_TRY(m_fs.CreateDirectory(obj->GetName()));
-            WriteCallbackFile(HazeCallbackType_CreateFolder, obj->GetName());
+            R_TRY(Fs(obj).CreateDirectory(obj->GetName()));
+            WriteCallbackFile(CallbackType_CreateFolder, obj->GetName());
             m_send_object_id = 0;
         } else {
-            R_TRY(m_fs.CreateFile(obj->GetName(), 0, 0));
-            WriteCallbackFile(HazeCallbackType_CreateFile, obj->GetName());
+            R_TRY(Fs(obj).CreateFile(obj->GetName(), 0, 0));
+            WriteCallbackFile(CallbackType_CreateFile, obj->GetName());
             m_send_object_id = new_object_info.object_id;
         }
 
@@ -445,23 +455,23 @@ namespace haze {
 
         /* Lock the object as a file. */
         FsFile file;
-        R_TRY(m_fs.OpenFile(obj->GetName(), FsOpenMode_Write | FsOpenMode_Append, std::addressof(file)));
+        R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Write | FsOpenMode_Append, std::addressof(file)));
 
         /* Ensure we maintain a clean state on exit. */
-        ON_SCOPE_EXIT { m_fs.CloseFile(std::addressof(file)); };
+        ON_SCOPE_EXIT { Fs(obj).CloseFile(std::addressof(file)); };
 
         /* Truncate the file after locking for write. */
         s64 offset = 0;
-        R_TRY(m_fs.SetFileSize(std::addressof(file), 0));
+        R_TRY(Fs(obj).SetFileSize(std::addressof(file), 0));
 
         /* Expand to the needed size. */
         const auto file_size = data_header.length - sizeof(PtpUsbBulkContainer);
         if (data_header.length > sizeof(PtpUsbBulkContainer)) {
-            R_TRY(m_fs.SetFileSize(std::addressof(file), file_size));
+            R_TRY(Fs(obj).SetFileSize(std::addressof(file), file_size));
         }
 
-        WriteCallbackFile(HazeCallbackType_WriteBegin, obj->GetName());
-        ON_SCOPE_EXIT { WriteCallbackFile(HazeCallbackType_WriteEnd, obj->GetName()); };
+        WriteCallbackFile(CallbackType_WriteBegin, obj->GetName());
+        ON_SCOPE_EXIT { WriteCallbackFile(CallbackType_WriteEnd, obj->GetName()); };
 
         /* Begin writing to the filesystem. */
         while (true) {
@@ -470,12 +480,12 @@ namespace haze {
             const Result read_res = dp.ReadBuffer(m_buffers->file_system_data_buffer, FsBufferSize, std::addressof(bytes_received));
 
             /* Write to the file. */
-            R_TRY(m_fs.WriteFile(std::addressof(file), offset, m_buffers->file_system_data_buffer, bytes_received, 0));
+            R_TRY(Fs(obj).WriteFile(std::addressof(file), offset, m_buffers->file_system_data_buffer, bytes_received, 0));
 
             offset += bytes_received;
 
             /* Log progress. */
-            WriteCallbackProgress(HazeCallbackType_WriteProgress, offset, file_size);
+            WriteCallbackProgress(CallbackType_WriteProgress, offset, file_size);
 
             /* If we received fewer bytes than the batch size, we're done. */
             if (haze::ResultEndOfTransmission::Includes(read_res)) {
@@ -486,7 +496,7 @@ namespace haze {
         }
 
         /* Truncate the file to the received size. */
-        R_TRY(m_fs.SetFileSize(std::addressof(file), offset));
+        R_TRY(Fs(obj).SetFileSize(std::addressof(file), offset));
 
         /* Write the success response. */
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
@@ -499,7 +509,10 @@ namespace haze {
         R_TRY(dp.Finalize());
 
         /* Disallow deleting the storage root. */
-        R_UNLESS(object_id != StorageId_SdmcFs, haze::ResultInvalidObjectId());
+        const auto it = std::find_if(m_fs_entries.cbegin(), m_fs_entries.cend(), [object_id](auto& e){
+            return object_id == e.storage_id;
+        });
+        R_UNLESS(it == m_fs_entries.cend(), haze::ResultInvalidObjectId());
 
         /* Check if we know about the object. If we don't, it's an error. */
         auto * const obj = m_object_database.GetObjectById(object_id);
@@ -507,15 +520,15 @@ namespace haze {
 
         /* Figure out what type of object this is. */
         FsDirEntryType entry_type;
-        R_TRY(m_fs.GetEntryType(obj->GetName(), std::addressof(entry_type)));
+        R_TRY(Fs(obj).GetEntryType(obj->GetName(), std::addressof(entry_type)));
 
         /* Remove the object from the filesystem. */
         if (entry_type == FsDirEntryType_Dir) {
-            WriteCallbackFile(HazeCallbackType_DeleteFolder, obj->GetName());
-            R_TRY(m_fs.DeleteDirectoryRecursively(obj->GetName()));
+            WriteCallbackFile(CallbackType_DeleteFolder, obj->GetName());
+            R_TRY(Fs(obj).DeleteDirectoryRecursively(obj->GetName()));
         } else {
-            WriteCallbackFile(HazeCallbackType_DeleteFile, obj->GetName());
-            R_TRY(m_fs.DeleteFile(obj->GetName()));
+            WriteCallbackFile(CallbackType_DeleteFile, obj->GetName());
+            R_TRY(Fs(obj).DeleteFile(obj->GetName()));
         }
 
         /* Remove the object from the database. */

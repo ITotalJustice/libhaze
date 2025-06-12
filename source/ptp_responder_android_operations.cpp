@@ -37,14 +37,14 @@ namespace haze {
 
         /* Lock the object as a file. */
         FsFile file;
-        R_TRY(m_fs.OpenFile(obj->GetName(), FsOpenMode_Read, std::addressof(file)));
+        R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Read, std::addressof(file)));
 
         /* Ensure we maintain a clean state on exit. */
-        ON_SCOPE_EXIT { m_fs.CloseFile(std::addressof(file)); };
+        ON_SCOPE_EXIT { Fs(obj).CloseFile(std::addressof(file)); };
 
         /* Get the file's size. */
         s64 file_size = 0;
-        R_TRY(m_fs.GetFileSize(std::addressof(file), std::addressof(file_size)));
+        R_TRY(Fs(obj).GetFileSize(std::addressof(file), std::addressof(file_size)));
 
         /* Ensure the requested offset and size are within range. */
         R_UNLESS(offset + size > offset, haze::ResultInvalidArgument());
@@ -54,12 +54,12 @@ namespace haze {
         R_TRY(db.AddDataHeader(m_request_header, size));
 
         if (offset == 0) {
-            WriteCallbackFile(HazeCallbackType_ReadBegin, obj->GetName());
+            WriteCallbackFile(CallbackType_ReadBegin, obj->GetName());
         }
         // this isn't perfect, but it'll do for now
         ON_SCOPE_EXIT {
             if (offset == static_cast<u64>(file_size)) {
-                WriteCallbackFile(HazeCallbackType_ReadEnd, obj->GetName());
+                WriteCallbackFile(CallbackType_ReadEnd, obj->GetName());
             }
         };
 
@@ -70,7 +70,7 @@ namespace haze {
             u64 bytes_to_read = std::min<s64>(FsBufferSize, size_remaining);
             u64 bytes_read;
 
-            R_TRY(m_fs.ReadFile(std::addressof(file), offset, m_buffers->file_system_data_buffer, bytes_to_read, FsReadOption_None, std::addressof(bytes_read)));
+            R_TRY(Fs(obj).ReadFile(std::addressof(file), offset, m_buffers->file_system_data_buffer, bytes_to_read, FsReadOption_None, std::addressof(bytes_read)));
 
             size_remaining -= bytes_read;
             offset += bytes_read;
@@ -79,7 +79,7 @@ namespace haze {
             R_TRY(db.AddBuffer(m_buffers->file_system_data_buffer, bytes_read));
 
             /* Log progress. */
-            WriteCallbackProgress(HazeCallbackType_ReadProgress, offset, size);
+            WriteCallbackProgress(CallbackType_ReadProgress, offset, size);
 
             /* If we read fewer bytes than the batch size, or have read enough data, we're done. */
             if (bytes_read < FsBufferSize || size_remaining == 0) {
@@ -109,14 +109,14 @@ namespace haze {
 
         /* Lock the object as a file. */
         FsFile file;
-        R_TRY(m_fs.OpenFile(obj->GetName(), FsOpenMode_Write | FsOpenMode_Append, std::addressof(file)));
+        R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Write | FsOpenMode_Append, std::addressof(file)));
 
         /* Ensure we maintain a clean state on exit. */
-        ON_SCOPE_EXIT { m_fs.CloseFile(std::addressof(file)); };
+        ON_SCOPE_EXIT { Fs(obj).CloseFile(std::addressof(file)); };
 
         /* Get the file's size. */
         s64 file_size = 0;
-        R_TRY(m_fs.GetFileSize(std::addressof(file), std::addressof(file_size)));
+        R_TRY(Fs(obj).GetFileSize(std::addressof(file), std::addressof(file_size)));
 
         /* Ensure the requested offset and size are within range. */
         R_UNLESS(offset + size > offset, haze::ResultInvalidArgument());
@@ -133,12 +133,12 @@ namespace haze {
         R_UNLESS(data_header.trans_id == m_request_header.trans_id, haze::ResultOperationNotSupported());
 
         if (offset == 0) {
-            WriteCallbackFile(HazeCallbackType_WriteBegin, obj->GetName());
+            WriteCallbackFile(CallbackType_WriteBegin, obj->GetName());
         }
         // this isn't perfect, but it'll do for now
         ON_SCOPE_EXIT {
             if (offset == static_cast<u64>(file_size)) {
-                WriteCallbackFile(HazeCallbackType_WriteEnd, obj->GetName());
+                WriteCallbackFile(CallbackType_WriteEnd, obj->GetName());
             }
         };
 
@@ -151,13 +151,13 @@ namespace haze {
 
             /* Write to the file. */
             u32 bytes_to_write = std::min<s64>(size_remaining, bytes_received);
-            R_TRY(m_fs.WriteFile(std::addressof(file), offset, m_buffers->file_system_data_buffer, bytes_to_write, 0));
+            R_TRY(Fs(obj).WriteFile(std::addressof(file), offset, m_buffers->file_system_data_buffer, bytes_to_write, 0));
 
             size_remaining -= bytes_to_write;
             offset += bytes_to_write;
 
             /* Log progress. */
-            WriteCallbackProgress(HazeCallbackType_WriteProgress, offset, file_size);
+            WriteCallbackProgress(CallbackType_WriteProgress, offset, file_size);
 
 
             /* If we received fewer bytes than the batch size, or have written enough data, we're done. */
@@ -186,13 +186,13 @@ namespace haze {
 
         /* Lock the object as a file. */
         FsFile file;
-        R_TRY(m_fs.OpenFile(obj->GetName(), FsOpenMode_Write, std::addressof(file)));
+        R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Write, std::addressof(file)));
 
         /* Ensure we maintain a clean state on exit. */
-        ON_SCOPE_EXIT { m_fs.CloseFile(std::addressof(file)); };
+        ON_SCOPE_EXIT { Fs(obj).CloseFile(std::addressof(file)); };
 
         /* Truncate the file. */
-        R_TRY(m_fs.SetFileSize(std::addressof(file), size));
+        R_TRY(Fs(obj).SetFileSize(std::addressof(file), size));
 
         /* Write the success response. */
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));

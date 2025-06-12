@@ -35,3 +35,35 @@ set_target_properties(libhaze PROPERTIES
     # due to force_inline attribute failing...
     COMPILE_OPTIONS "$<$<CONFIG:Debug>:-Os>"
 )
+
+target_compile_options(libhaze PRIVATE
+    -Wall
+    -Wno-tautological-compare
+)
+
+if (BUILD_EXAMPLES)
+    add_executable(libhaze-example example/source/main.cpp)
+
+    target_link_libraries(libhaze-example PRIVATE libhaze)
+
+    set_target_properties(libhaze-example PROPERTIES
+        C_STANDARD 11
+        C_EXTENSIONS ON
+        CXX_STANDARD 20
+        CXX_EXTENSIONS ON
+    )
+
+    target_compile_options(libhaze-example PRIVATE
+        -Wall
+    )
+
+    nx_generate_nacp(libhaze-example.nacp
+        NAME "libhaze-example"
+        AUTHOR "TotalJustice"
+        VERSION 1.0.0
+    )
+
+    nx_create_nro(libhaze-example
+        NACP libhaze-example.nacp
+    )
+endif()
