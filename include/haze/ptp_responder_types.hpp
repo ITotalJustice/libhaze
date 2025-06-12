@@ -25,9 +25,12 @@ namespace haze {
         .bInterfaceProtocol = 0x01,
     };
 
-    /* This is a VID:PID recognized by libmtp. */
-    constexpr u16 SwitchMtpIdVendor  = 0x057e;
-    constexpr u16 SwitchMtpIdProduct = 0x201d;
+    // TJ: Changed the switch id to pixel, as at least 1 user has been unable to connect
+    // when using those id's on windows, for whatever reason.
+    // This also meant that capmtp didn't work for that user.
+    // https://devicehunt.com/view/type/usb/vendor/18D1/device/4EE1
+    constexpr u16 SwitchMtpIdVendor  = 0x18D1; // Google Inc.
+    constexpr u16 SwitchMtpIdProduct = 0x4EE1; // Nexus/Pixel Device (MTP)
 
     /* Constants used for MTP GetDeviceInfo response. */
     constexpr u16 MtpStandardVersion       = 100;
