@@ -31,7 +31,7 @@ namespace haze {
                 HAZE_ASSERT(fs != nullptr);
 
                 m_reactor = reactor;
-                m_filesystem = fs;
+                m_filesystem = std::move(fs);
             }
 
             void Finalize() {
@@ -130,6 +130,10 @@ namespace haze {
 
             void CloseDirectory(FsDir *d) {
                 m_filesystem->CloseDirectory(d);
+            }
+
+            bool MultiThreadTransfer(s64 size, bool read) {
+                return m_filesystem->MultiThreadTransfer(size, read);
             }
     };
 

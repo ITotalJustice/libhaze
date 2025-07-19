@@ -17,6 +17,7 @@
 #include <haze/ptp_data_builder.hpp>
 #include <haze/ptp_data_parser.hpp>
 #include <haze/ptp_responder_types.hpp>
+#include "haze/threaded_file_transfer.hpp"
 
 namespace haze {
 
@@ -318,35 +319,33 @@ namespace haze {
         ON_SCOPE_EXIT { Fs(obj).CloseFile(std::addressof(file)); };
 
         /* Get the file's size. */
-        s64 size = 0;
-        R_TRY(Fs(obj).GetFileSize(std::addressof(file), std::addressof(size)));
+        s64 file_size = 0;
+        R_TRY(Fs(obj).GetFileSize(std::addressof(file), std::addressof(file_size)));
 
         /* Send the header and file size. */
-        R_TRY(db.AddDataHeader(m_request_header, size));
+        R_TRY(db.AddDataHeader(m_request_header, file_size));
 
         WriteCallbackFile(CallbackType_ReadBegin, obj->GetName());
         ON_SCOPE_EXIT { WriteCallbackFile(CallbackType_ReadEnd, obj->GetName()); };
 
-        /* Begin reading the file, writing data to the builder as we progress. */
-        s64 offset = 0;
-        while (true) {
-            /* Get the next batch. */
-            u64 bytes_read;
-            R_TRY(Fs(obj).ReadFile(std::addressof(file), offset, m_buffers->file_system_data_buffer, FsBufferSize, FsReadOption_None, std::addressof(bytes_read)));
-
-            offset += bytes_read;
-
-            /* Write to output. */
-            R_TRY(db.AddBuffer(m_buffers->file_system_data_buffer, bytes_read));
-
-            /* Log progress. */
-            WriteCallbackProgress(CallbackType_ReadProgress, offset, size);
-
-            /* If we read fewer bytes than the batch size, we're done. */
-            if (bytes_read < FsBufferSize) {
-                break;
-            }
+        auto mode = sphaira::thread::Mode::MultiThreaded;
+        if (!Fs(obj).MultiThreadTransfer(file_size, true)) {
+            mode = sphaira::thread::Mode::SingleThreadedIfSmaller;
         }
+
+        R_TRY(sphaira::thread::Transfer(file_size,
+            [this, &file, &obj](void* data, s64 off, s64 size, u64* bytes_read) -> Result {
+                /* Get the next batch. */
+                R_TRY(Fs(obj).ReadFile(std::addressof(file), off, data, size, FsReadOption_None, bytes_read));
+                R_SUCCEED();
+            },
+            [this, &db](const void* data, s64 off, s64 size) -> Result {
+                /* Write to output. */
+                R_TRY(db.AddBuffer((const u8*)data, size));
+                WriteCallbackProgress(CallbackType_ReadProgress, off, size);
+                R_SUCCEED();
+            }, mode
+        ));
 
         /* Flush the data response. */
         R_TRY(db.Commit());
@@ -460,43 +459,63 @@ namespace haze {
         /* Ensure we maintain a clean state on exit. */
         ON_SCOPE_EXIT { Fs(obj).CloseFile(std::addressof(file)); };
 
-        /* Truncate the file after locking for write. */
-        s64 offset = 0;
-        R_TRY(Fs(obj).SetFileSize(std::addressof(file), 0));
+        /* Dummy file size for the threaded transfer. */
+        auto file_size = 4_GB;
+        u64 offset = 0;
 
-        /* Expand to the needed size. */
-        const auto file_size = data_header.length - sizeof(PtpUsbBulkContainer);
         if (data_header.length > sizeof(PtpUsbBulkContainer)) {
+            /* Got the real file size. */
+            file_size = data_header.length - sizeof(PtpUsbBulkContainer);
             R_TRY(Fs(obj).SetFileSize(std::addressof(file), file_size));
+        } else {
+            /* Truncate the file after locking for write. */
+            R_TRY(Fs(obj).SetFileSize(std::addressof(file), 0));
         }
+
+        /* Truncate the file to the received size. */
+        ON_SCOPE_EXIT{
+            if (offset != file_size) {
+                Fs(obj).SetFileSize(std::addressof(file), offset);
+            }
+        };
 
         WriteCallbackFile(CallbackType_WriteBegin, obj->GetName());
         ON_SCOPE_EXIT { WriteCallbackFile(CallbackType_WriteEnd, obj->GetName()); };
 
-        /* Begin writing to the filesystem. */
-        while (true) {
-            /* Read as many bytes as we can. */
-            u32 bytes_received;
-            const Result read_res = dp.ReadBuffer(m_buffers->file_system_data_buffer, FsBufferSize, std::addressof(bytes_received));
-
-            /* Write to the file. */
-            R_TRY(Fs(obj).WriteFile(std::addressof(file), offset, m_buffers->file_system_data_buffer, bytes_received, 0));
-
-            offset += bytes_received;
-
-            /* Log progress. */
-            WriteCallbackProgress(CallbackType_WriteProgress, offset, file_size);
-
-            /* If we received fewer bytes than the batch size, we're done. */
-            if (haze::ResultEndOfTransmission::Includes(read_res)) {
-                break;
-            }
-
-            R_TRY(read_res);
+        auto mode = sphaira::thread::Mode::MultiThreaded;
+        if (!Fs(obj).MultiThreadTransfer(0, false)) {
+            mode = sphaira::thread::Mode::SingleThreaded;
         }
 
-        /* Truncate the file to the received size. */
-        R_TRY(Fs(obj).SetFileSize(std::addressof(file), offset));
+        bool is_done = false;
+
+        R_TRY(sphaira::thread::Transfer(file_size,
+            [this, &dp, &is_done](void* data, s64 off, s64 size, u64* bytes_read) -> Result {
+                if (is_done) {
+                    *bytes_read = 0;
+                    R_SUCCEED();
+                }
+
+                /* Read as many bytes as we can. */
+                u32 bytes_received;
+                const Result read_res = dp.ReadBuffer((u8*)data, size, std::addressof(bytes_received));
+                *bytes_read = bytes_received;
+
+                /* If we received fewer bytes than the batch size, we're done. */
+                if (haze::ResultEndOfTransmission::Includes(read_res)) {
+                    is_done = true;
+                    R_SUCCEED();
+                }
+
+                R_RETURN(read_res);
+            },
+            [this, &file, &obj, &offset](const void* data, s64 off, s64 size) -> Result {
+                /* Write to the file. */
+                R_TRY(Fs(obj).WriteFile(std::addressof(file), off, data, size, 0));
+                offset += size;
+                R_SUCCEED();
+            }, mode
+        ));
 
         /* Write the success response. */
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));

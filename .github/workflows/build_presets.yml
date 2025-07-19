@@ -25,7 +25,9 @@ jobs:
     - name: Build
       run: cmake --build --preset ${{ matrix.preset }} --parallel 4
 
-    - uses: actions/upload-artifact@master
+    - name: Deploy
+      if: ${{ github.event_name != 'pull_request' && github.event.action != 'unassigned' }}
+      uses: actions/upload-artifact@master
       with:
         name: libhaze-example-${{ matrix.preset }}
         path: build/${{ matrix.preset }}/libhaze-example.nro

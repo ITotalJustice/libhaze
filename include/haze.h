@@ -73,6 +73,8 @@ struct FileSystemProxyImpl {
     virtual Result ReadDirectory(FsDir *d, s64 *out_total_entries, size_t max_entries, FsDirectoryEntry *buf) = 0;
     virtual Result GetDirectoryEntryCount(FsDir *d, s64 *out_count) = 0;
     virtual void CloseDirectory(FsDir *d) = 0;
+
+    virtual bool MultiThreadTransfer(s64 size, bool read) { return true; }
 };
 
 using FsEntries = std::vector<std::shared_ptr<FileSystemProxyImpl>>;

@@ -21,6 +21,7 @@ add_library(libhaze
     ${libhaze_SOURCE_DIR}/source/ptp_responder_ptp_operations.cpp
     ${libhaze_SOURCE_DIR}/source/ptp_responder.cpp
     ${libhaze_SOURCE_DIR}/source/usb_session.cpp
+    ${libhaze_SOURCE_DIR}/source/threaded_file_transfer.cpp
 )
 
 target_include_directories(libhaze PUBLIC ${libhaze_SOURCE_DIR}/include)
@@ -59,7 +60,7 @@ if (BUILD_EXAMPLES)
     nx_generate_nacp(libhaze-example.nacp
         NAME "libhaze-example"
         AUTHOR "TotalJustice"
-        VERSION 1.0.0
+        VERSION 2.0.0
     )
 
     nx_create_nro(libhaze-example
