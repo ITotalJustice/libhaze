@@ -91,13 +91,6 @@ namespace haze {
             Result SendObject(PtpDataParser &dp);
             Result DeleteObject(PtpDataParser &dp);
 
-            /* Android operations. */
-            Result GetPartialObject64(PtpDataParser &dp);
-            Result SendPartialObject(PtpDataParser &dp);
-            Result TruncateObject(PtpDataParser &dp);
-            Result BeginEditObject(PtpDataParser &dp);
-            Result EndEditObject(PtpDataParser &dp);
-
             /* MTP operations. */
             Result GetObjectPropsSupported(PtpDataParser &dp);
             Result GetObjectPropDesc(PtpDataParser &dp);

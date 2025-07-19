@@ -17,7 +17,6 @@ add_library(libhaze
     ${libhaze_SOURCE_DIR}/source/haze.cpp
     ${libhaze_SOURCE_DIR}/source/ptp_object_database.cpp
     ${libhaze_SOURCE_DIR}/source/ptp_object_heap.cpp
-    ${libhaze_SOURCE_DIR}/source/ptp_responder_android_operations.cpp
     ${libhaze_SOURCE_DIR}/source/ptp_responder_mtp_operations.cpp
     ${libhaze_SOURCE_DIR}/source/ptp_responder_ptp_operations.cpp
     ${libhaze_SOURCE_DIR}/source/ptp_responder.cpp
