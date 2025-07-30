@@ -37,12 +37,12 @@ struct FsNative : haze::FileSystemProxyImpl {
         }
 
         if (len && !strncasecmp(path + 1, GetName(), len)) {
-            std::snprintf(buf, sizeof(buf), "/%s", path + 1 + len);
+            std::snprintf(out, sizeof(buf), "/%s", path + 1 + len);
         } else {
-            std::strcpy(buf, path);
+            std::strcpy(out, path);
         }
 
-        return buf;
+        return out;
     }
 
     Result GetTotalSpace(const char *path, s64 *out) override {
@@ -122,29 +122,16 @@ struct FsSdmc final : FsNative {
     }
 };
 
-struct FsImageNand final : FsNative {
-    FsImageNand() {
-        fsOpenImageDirectoryFileSystem(&m_fs, FsImageDirectoryId_Nand);
+struct FsAlbum final : FsNative {
+    FsAlbum(FsImageDirectoryId id) {
+        fsOpenImageDirectoryFileSystem(&m_fs, id);
     }
 
     const char* GetName() const {
-        return "image_nand:/";
+        return "album:/";
     }
     const char* GetDisplayName() const {
-        return "Image Nand";
-    }
-};
-
-struct FsImageSd final : FsNative {
-    FsImageSd() {
-        fsOpenImageDirectoryFileSystem(&m_fs, FsImageDirectoryId_Sd);
-    }
-
-    const char* GetName() const {
-        return "image_sd:/";
-    }
-    const char* GetDisplayName() const {
-        return "Image SD";
+        return "Album";
     }
 };
 
@@ -199,8 +186,7 @@ int main(int argc, char** argv) {
 
     haze::FsEntries fs_entries;
     fs_entries.emplace_back(std::make_shared<FsSdmc>());
-    fs_entries.emplace_back(std::make_shared<FsImageNand>());
-    fs_entries.emplace_back(std::make_shared<FsImageSd>());
+    fs_entries.emplace_back(std::make_shared<FsAlbum>(FsImageDirectoryId_Sd));
 
     mutexInit(&g_mutex);
     haze::Initialize(callbackHandler, 0x2C, 2, fs_entries); // init libhaze (creates thread)

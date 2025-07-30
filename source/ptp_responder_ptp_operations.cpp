@@ -355,6 +355,9 @@ namespace haze {
     }
 
     Result PtpResponder::SendObjectInfo(PtpDataParser &rdp) {
+        /* Prop list is reset on SendObjectInfo. */
+        m_send_prop_list.reset();
+
         /* Get the storage ID and parent object and flush the request packet. */
         u32 storage_id, parent_object;
         R_TRY(rdp.Read(std::addressof(storage_id)));
@@ -463,13 +466,17 @@ namespace haze {
         auto file_size = 4_GB;
         u64 offset = 0;
 
-        if (data_header.length > sizeof(PtpUsbBulkContainer)) {
-            /* Got the real file size. */
-            file_size = data_header.length - sizeof(PtpUsbBulkContainer);
-            R_TRY(Fs(obj).SetFileSize(std::addressof(file), file_size));
+        if (m_send_prop_list) {
+            file_size = m_send_prop_list->size;
         } else {
-            /* Truncate the file after locking for write. */
-            R_TRY(Fs(obj).SetFileSize(std::addressof(file), 0));
+            if (data_header.length > sizeof(PtpUsbBulkContainer)) {
+                /* Got the real file size. */
+                file_size = data_header.length - sizeof(PtpUsbBulkContainer);
+                R_TRY(Fs(obj).SetFileSize(std::addressof(file), file_size));
+            } else {
+                /* Truncate the file after locking for write. */
+                R_TRY(Fs(obj).SetFileSize(std::addressof(file), 0));
+            }
         }
 
         /* Truncate the file to the received size. */

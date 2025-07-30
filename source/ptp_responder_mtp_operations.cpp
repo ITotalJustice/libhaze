@@ -344,6 +344,118 @@ namespace haze {
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
     }
 
+    Result PtpResponder::SendObjectPropList(PtpDataParser &rdp) {
+        /* Prop list is reset on SendObjectPropList. */
+        m_send_prop_list.reset();
+
+        u32 storage_id;
+        u32 parent_object;
+        u32 format_code;
+        u32 object_size_msb;
+        u32 object_size_lsb;
+
+        R_TRY(rdp.Read(std::addressof(storage_id)));
+        R_TRY(rdp.Read(std::addressof(parent_object)));
+        R_TRY(rdp.Read(std::addressof(format_code)));
+        R_TRY(rdp.Read(std::addressof(object_size_msb)));
+        R_TRY(rdp.Read(std::addressof(object_size_lsb)));
+        R_TRY(rdp.Finalize());
+
+        /* Rewrite requests for creating in storage directories. */
+        if (parent_object == PtpGetObjectHandles_RootParent) {
+            parent_object = storage_id;
+        }
+
+        /* Check if we know about the parent object. If we don't, it's an error. */
+        auto * const parentobj = m_object_database.GetObjectById(parent_object);
+        R_UNLESS(parentobj != nullptr, haze::ResultInvalidObjectId());
+
+        PtpDataParser dp(m_buffers->usb_bulk_read_buffer, std::addressof(m_usb_server));
+
+        /* Ensure we have a data header. */
+        PtpUsbBulkContainer data_header;
+        R_TRY(dp.Read(std::addressof(data_header)));
+        R_UNLESS(data_header.type == PtpUsbBulkContainerType_Data,  haze::ResultUnknownRequestType());
+        R_UNLESS(data_header.code == m_request_header.code,         haze::ResultOperationNotSupported());
+        R_UNLESS(data_header.trans_id == m_request_header.trans_id, haze::ResultOperationNotSupported());
+
+        /* Get the number of properties */
+        u32 num_properties;
+        R_TRY(dp.Read(std::addressof(num_properties)));
+
+        for (u32 i = 0; i < num_properties; i++) {
+            /* Read the object handle. */
+            u32 object_id;
+            R_TRY(dp.Read(std::addressof(object_id)));
+
+            /* Read the property code. */
+            u16 obj_property;
+            R_TRY(dp.Read(std::addressof(obj_property)));
+
+            /* Read the type. */
+            PtpDataTypeCode type;
+            R_TRY(dp.Read(std::addressof(type)));
+
+            switch (obj_property) {
+                case PtpObjectPropertyCode_ObjectFileName:
+                    {
+                        R_UNLESS(type == PtpDataTypeCode_String, haze::ResultUnknownPropertyCode());
+                        R_TRY((dp.ReadString(m_buffers->filename_string_buffer)));
+                    }
+                    break;
+                default:
+                    R_THROW(haze::ResultUnknownPropertyCode());
+            }
+        }
+        R_TRY(dp.Finalize());
+
+        /* Ensure we can actually process the new name. */
+        const bool is_empty         = m_buffers->filename_string_buffer[0] == '\x00';
+        const bool contains_slashes = std::strchr(m_buffers->filename_string_buffer, '/') != nullptr;
+        R_UNLESS(!is_empty && !contains_slashes, haze::ResultInvalidPropertyValue());
+
+        /* Add a new object in the database with the new name. */
+        PtpObject *newobj;
+        R_TRY(m_object_database.CreateOrFindObject(parentobj->GetName(), m_buffers->filename_string_buffer, parentobj->GetObjectId(), parentobj->GetStorageId(), std::addressof(newobj)));
+
+        /* Create prop list. */
+        ObjectPropList prop_list{};
+        prop_list.size = ((u64)object_size_msb << 32) | object_size_lsb;
+        m_send_prop_list = prop_list;
+
+        /* Make a new object with the intended name. */
+        PtpNewObjectInfo new_object_info;
+        new_object_info.storage_id       = parentobj->GetObjectId();
+        new_object_info.parent_object_id = parent_object == storage_id ? 0 : parent_object;
+
+        /* Ensure we maintain a clean state on failure. */
+        ON_RESULT_FAILURE { m_object_database.DeleteObject(newobj); };
+
+        /* Register the object with a new ID. */
+        m_object_database.RegisterObject(newobj);
+        new_object_info.object_id = newobj->GetObjectId();
+
+        /* Create the object on the filesystem. */
+        if (format_code == PtpObjectFormatCode_Association) {
+            R_TRY(Fs(newobj).CreateDirectory(newobj->GetName()));
+            WriteCallbackFile(CallbackType_CreateFolder, newobj->GetName());
+            m_send_object_id = 0;
+        } else {
+            u32 flags = 0;
+            if (prop_list.size >= 4_GB) {
+                flags = FsCreateOption_BigFile;
+            }
+
+            R_TRY(Fs(newobj).CreateFile(newobj->GetName(), prop_list.size, flags));
+            WriteCallbackFile(CallbackType_CreateFile, newobj->GetName());
+            m_send_object_id = new_object_info.object_id;
+        }
+
+        /* Save prop list and return success. */
+        m_send_prop_list = prop_list;
+        R_RETURN(this->WriteResponse(PtpResponseCode_Ok, new_object_info));
+    }
+
     Result PtpResponder::SetObjectPropValue(PtpDataParser &rdp) {
         u32 object_id;
         PtpObjectPropertyCode property_code;

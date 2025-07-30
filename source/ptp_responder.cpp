@@ -152,8 +152,12 @@ namespace haze {
             case PtpOperationCode_MtpGetObjectPropDesc:       R_RETURN(this->GetObjectPropDesc(dp));       break;
             case PtpOperationCode_MtpGetObjectPropValue:      R_RETURN(this->GetObjectPropValue(dp));      break;
             case PtpOperationCode_MtpSetObjectPropValue:      R_RETURN(this->SetObjectPropValue(dp));      break;
-            case PtpOperationCode_MtpGetObjPropList:          R_RETURN(this->GetObjectPropList(dp)); break;
-            default:                                          R_THROW(haze::ResultOperationNotSupported());
+            case PtpOperationCode_MtpGetObjPropList:          R_RETURN(this->GetObjectPropList(dp));       break;
+            case PtpOperationCode_MtpSendObjectPropList:      R_RETURN(this->SendObjectPropList(dp));      break;
+            default:
+            {
+                R_THROW(haze::ResultOperationNotSupported());
+            }
         }
     }
 
