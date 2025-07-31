@@ -18,167 +18,67 @@
 #include <haze/event_reactor.hpp>
 #include <haze/ptp_object_heap.hpp>
 #include <haze/ptp_responder.hpp>
-#include <stop_token>
 
 namespace haze {
 
-    class ConsoleMainLoop : public EventConsumer {
+    class ConsoleMainLoop final : EventConsumer {
         private:
-            static constexpr size_t FrameDelayNs = 33'333'333;
-        private:
-            EventReactor *m_reactor;
-            PtpObjectHeap *m_object_heap;
+            const Callback m_callback;
+            const int m_prio;
+            const int m_cpuid;
+            const FsEntries m_entries;
+            Thread m_thread{};
+            UEvent m_cancel_event{};
+            EventReactor m_event_reactor{};
 
-            Thread m_thread;
-            UEvent m_event;
-            UEvent m_cancel_event;
-            std::stop_token m_token;
-        private:
-            static void Run(void *arg) {
-                static_cast<ConsoleMainLoop *>(arg)->Run();
-            }
-
-            void Run() {
-                int idx;
-
-                while (true) {
-                    /* Wait for up to 1 frame delay time to be cancelled. */
-                    Waiter cancel_waiter = waiterForUEvent(std::addressof(m_cancel_event));
-                    Result rc = waitObjects(std::addressof(idx), std::addressof(cancel_waiter), 1, FrameDelayNs);
-
-                    /* Finish if we were cancelled. */
-                    if (R_SUCCEEDED(rc)) {
-                        break;
-                    }
-
-                    /* Otherwise, signal the console update event. */
-                    if (svc::ResultTimedOut::Includes(rc)) {
-                        ueventSignal(std::addressof(m_event));
-                    }
-                }
-            }
         public:
-            explicit ConsoleMainLoop(std::stop_token token) : m_reactor(), m_thread(), m_event(), m_cancel_event(), m_token{token} { /* ... */ }
+            explicit ConsoleMainLoop(Callback callback, int prio, int cpuid, const FsEntries& entries)
+            : m_callback{callback}, m_prio{prio}, m_cpuid{cpuid}, m_entries{entries} {
+                /* Create cancel event. */
+                ueventCreate(&m_cancel_event, false);
 
-            Result Initialize(EventReactor *reactor, PtpObjectHeap *object_heap, int prio, int cpuid) {
-                /* Register event reactor and heap. */
-                m_reactor     = reactor;
-                m_object_heap = object_heap;
+                /* Clear the event reactor. */
+                m_event_reactor.SetResult(ResultSuccess());
+                m_event_reactor.AddConsumer(this, waiterForUEvent(&m_cancel_event));
 
-                /* Initialize events. */
-                ueventCreate(std::addressof(m_event), true);
-                ueventCreate(std::addressof(m_cancel_event), true);
-
-                /* Check if we are running preemptive, if so, do not modify the prio. */
-                if (prio != 0x3B && prio != 0x3F) {
-                    /* Create the thread with higher priority than the main thread. */
-                    prio--;
-                }
-                R_TRY(threadCreate(std::addressof(m_thread), ConsoleMainLoop::Run, this, nullptr, 4_KB, prio, cpuid));
-
-                /* Ensure we close the thread on failure. */
-                ON_RESULT_FAILURE { threadClose(std::addressof(m_thread)); };
-
-                /* Connect ourselves to the event loop. */
-                R_UNLESS(m_reactor->AddConsumer(this, waiterForUEvent(std::addressof(m_event))), haze::ResultRegistrationFailed());
-
-                /* Start the delay thread. */
-                R_RETURN(threadStart(std::addressof(m_thread)));
+                /* Create and start thread. */
+                threadCreate(&m_thread, thread_func, this, nullptr, 1024*64, prio, cpuid);
+                threadStart(&m_thread);
             }
 
-            void Finalize() {
-                /* Signal the delay thread to shut down. */
-                ueventSignal(std::addressof(m_cancel_event));
-
-                /* Wait for the delay thread to exit and close it. */
-                HAZE_R_ABORT_UNLESS(threadWaitForExit(std::addressof(m_thread)));
-
-                HAZE_R_ABORT_UNLESS(threadClose(std::addressof(m_thread)));
-
-                /* Disconnect from the event loop.*/
-                m_reactor->RemoveConsumer(this);
+            ~ConsoleMainLoop() {
+                ueventSignal(&m_cancel_event);
+                threadWaitForExit(&m_thread);
+                threadClose(&m_thread);
             }
-        protected:
-            void ProcessEvent() override {
-                /* Pump applet events, and check if exit was requested. */
-                if (m_token.stop_requested()) {
-                    m_reactor->SetResult(haze::ResultStopRequested());
-                }
 
-                /* Check if focus was lost. */
-                if (appletGetFocusState() == AppletFocusState_Background) {
-                    m_reactor->SetResult(haze::ResultFocusLost());
-                }
-            }
-        private:
-            static bool SuspendAndWaitForFocus(std::stop_token token) {
-                /* Enable suspension with resume notification. */
-                appletSetFocusHandlingMode(AppletFocusHandlingMode_SuspendHomeSleepNotify);
-
-                /* Pump applet events. */
-                while (!token.stop_requested()) {
-                    /* Check if focus was regained. */
-                    if (appletGetFocusState() != AppletFocusState_Background) {
-                        return true;
-                    }
-
-                    svcSleepThread(FrameDelayNs);
-                }
-
-                /* Exit was requested. */
-                return false;
-            }
         public:
-            static void RunApplication(std::stop_token token, Callback callback, int prio, int cpuid, const FsEntries& entries) {
+            void RunApplication() {
                 /* Declare the object heap, to hold the database for an active session. */
                 PtpObjectHeap ptp_object_heap;
 
-                /* Declare the event reactor, and components which use it. */
-                EventReactor event_reactor;
-                PtpResponder ptp_responder{callback};
-                ConsoleMainLoop console_main_loop{token};
+                /* Configure the PTP responder. */
+                PtpResponder ptp_responder{m_callback};
+                ptp_responder.Initialize(std::addressof(m_event_reactor), std::addressof(ptp_object_heap), m_entries);
 
-                while (true) {
-                    /* Disable suspension. */
-                    appletSetFocusHandlingMode(AppletFocusHandlingMode_NoSuspend);
+                /* Ensure we maintain a clean state on exit. */
+                ON_SCOPE_EXIT {
+                    /* Finalize the PTP responder. */
+                    ptp_responder.Finalize();
+                };
 
-                    /* Declare result from serving to use. */
-                    Result rc;
-                    {
-                        /* Ensure we don't go to sleep while transferring files. */
-                        appletSetAutoSleepDisabled(true);
-
-                        /* Clear the event reactor. */
-                        event_reactor.SetResult(ResultSuccess());
-
-                        /* Configure the PTP responder and console main loop. */
-                        ptp_responder.Initialize(std::addressof(event_reactor), std::addressof(ptp_object_heap), entries);
-                        console_main_loop.Initialize(std::addressof(event_reactor), std::addressof(ptp_object_heap), prio, cpuid);
-
-                        /* Ensure we maintain a clean state on exit. */
-                        ON_SCOPE_EXIT {
-                            /* Finalize the console main loop and PTP responder. */
-                            console_main_loop.Finalize();
-                            ptp_responder.Finalize();
-
-                            /* Restore auto sleep setting. */
-                            appletSetAutoSleepDisabled(false);
-                        };
-
-                        /* Begin processing requests. */
-                        rc = ptp_responder.LoopProcess();
-                    }
-
-                    /* If focus was lost, try to pump the applet main loop until we receive focus again. */
-                    if (haze::ResultFocusLost::Includes(rc) && SuspendAndWaitForFocus(token)) {
-                        continue;
-                    }
-
-                    /* Otherwise, enable suspension and finish. */
-                    appletSetFocusHandlingMode(AppletFocusHandlingMode_SuspendHomeSleep);
-                    break;
-                }
+                /* Begin processing requests. */
+                ptp_responder.LoopProcess();
             }
+
+            static void thread_func(void* user) {
+                static_cast<ConsoleMainLoop*>(user)->RunApplication();
+            }
+
+        private:
+            void ProcessEvent() override {
+                m_event_reactor.SetResult(haze::ResultStopRequested());
+            };
     };
 
 }

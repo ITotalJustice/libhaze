@@ -519,6 +519,7 @@ namespace haze {
             [this, &file, &obj, &offset](const void* data, s64 off, s64 size) -> Result {
                 /* Write to the file. */
                 R_TRY(Fs(obj).WriteFile(std::addressof(file), off, data, size, 0));
+                WriteCallbackProgress(CallbackType_WriteProgress, off, size);
                 offset += size;
                 R_SUCCEED();
             }, mode

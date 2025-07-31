@@ -20,24 +20,14 @@
 namespace haze {
 namespace {
 
-Thread g_haze_thread{};
 std::mutex g_mutex;
-std::stop_source g_stop_source{};
-bool g_is_running{};
-Callback g_callback{};
-int g_cpuid{};
-int g_prio{};
-FsEntries g_entries{};
-
-void thread_func(void* arg) {
-    haze::ConsoleMainLoop::RunApplication(g_stop_source.get_token(), g_callback, g_prio, g_cpuid, g_entries);
-}
+std::unique_ptr<haze::ConsoleMainLoop> g_haze{};
 
 } // namespace
 
 bool Initialize(Callback callback, int prio, int cpuid, const FsEntries& entries) {
     std::scoped_lock lock{g_mutex};
-    if (g_is_running) {
+    if (g_haze) {
         return false;
     }
 
@@ -45,42 +35,22 @@ bool Initialize(Callback callback, int prio, int cpuid, const FsEntries& entries
         return false;
     }
 
-    /* Reset stop token */
-    g_stop_source = {};
-
     /* Load device firmware version and serial number. */
     HAZE_R_ABORT_UNLESS(haze::LoadDeviceProperties());
 
-    g_callback = callback;
-    g_prio = prio;
-    g_cpuid = cpuid;
-    g_entries = entries;
+    g_haze = std::make_unique<haze::ConsoleMainLoop>(callback, prio, cpuid, entries);
 
-    /* Run the application. */
-    if (R_FAILED(threadCreate(&g_haze_thread, thread_func, nullptr, nullptr, 1024*32, prio, cpuid))) {
-        return false;
-    }
-
-    if (R_FAILED(threadStart(&g_haze_thread))) {
-        threadClose(&g_haze_thread);
-        return false;
-    }
-
-    return g_is_running = true;
+    return true;
 }
 
 void Exit() {
     std::scoped_lock lock{g_mutex};
-    if (!g_is_running) {
+    if (!g_haze) {
         return;
     }
 
-    g_stop_source.request_stop();
-    threadWaitForExit(&g_haze_thread);
-    threadClose(&g_haze_thread);
-    g_is_running = false;
-    g_callback = nullptr;
-    g_entries.clear();
+    /* this will block until thread exit. */
+    g_haze.reset();
 }
 
 } // namespace haze

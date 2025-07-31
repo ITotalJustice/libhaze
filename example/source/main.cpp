@@ -1,4 +1,4 @@
-#define NXLINK_LOG 1
+#define NXLINK_LOG 0
 
 #include <switch.h>
 #include <cstdlib>
@@ -209,7 +209,7 @@ int main(int argc, char** argv) {
             break; // break in order to return to hbmenu
 
         processEvents();
-        svcSleepThread(1000000);
+        svcSleepThread(1e+9/60);
     }
 
     #if NXLINK_LOG
