@@ -18,6 +18,7 @@
 #include <haze/event_reactor.hpp>
 #include <haze/ptp_object_heap.hpp>
 #include <haze/ptp_responder.hpp>
+#include <haze/thread.hpp>
 
 namespace haze {
 
@@ -42,7 +43,7 @@ namespace haze {
                 m_event_reactor.AddConsumer(this, waiterForUEvent(&m_cancel_event));
 
                 /* Create and start thread. */
-                threadCreate(&m_thread, thread_func, this, nullptr, 1024*64, prio, cpuid);
+                sphaira::utils::CreateThread(&m_thread, thread_func, this, 1024*64);
                 threadStart(&m_thread);
             }
 

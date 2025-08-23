@@ -1,4 +1,5 @@
 #include "haze/threaded_file_transfer.hpp"
+#include "haze/thread.hpp"
 
 #include <vector>
 #include <algorithm>
@@ -249,10 +250,6 @@ void writeFunc(void* d) {
     t->SetWriteResult(t->writeFuncInternal());
 }
 
-auto GetAlternateCore(int id) {
-    return id == 1 ? 2 : 1;
-}
-
 Result TransferInternal(s64 size, const ReadCallback& rfunc, const WriteCallback& wfunc, Mode mode, u64 buffer_size = BUFFER_SIZE) {
     if (mode == Mode::SingleThreadedIfSmaller) {
         if ((u64)size <= buffer_size) {
@@ -284,19 +281,16 @@ Result TransferInternal(s64 size, const ReadCallback& rfunc, const WriteCallback
         R_SUCCEED();
     }
     else {
-        const auto WRITE_THREAD_CORE = 2;
-        const auto READ_THREAD_CORE = GetAlternateCore(WRITE_THREAD_CORE);
-
         UEvent uevent;
         ueventCreate(&uevent, false);
         ThreadData t_data{uevent, size, rfunc, wfunc, buffer_size};
 
         Thread t_read{};
-        R_TRY(threadCreate(&t_read, readFunc, std::addressof(t_data), nullptr, 1024*256, 0x3B, READ_THREAD_CORE));
+        R_TRY(utils::CreateThread(&t_read, readFunc, std::addressof(t_data)));
         ON_SCOPE_EXIT { threadClose(&t_read); };
 
         Thread t_write{};
-        R_TRY(threadCreate(&t_write, writeFunc, std::addressof(t_data), nullptr, 1024*256, 0x3B, WRITE_THREAD_CORE));
+        R_TRY(utils::CreateThread(&t_write, writeFunc, std::addressof(t_data)));
         ON_SCOPE_EXIT { threadClose(&t_write); };
 
         R_TRY(threadStart(std::addressof(t_read)));
