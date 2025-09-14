@@ -52,7 +52,7 @@ namespace haze {
         public:
             constexpr explicit PtpResponder(Callback callback = nullptr) : m_callback{callback}, m_usb_server(), m_fs_entries(), m_request_header(), m_object_heap(), m_buffers(), m_send_object_id(), m_session_open(), m_object_database() { /* ... */ }
 
-            Result Initialize(EventReactor *reactor, PtpObjectHeap *object_heap, const FsEntries& entries);
+            Result Initialize(EventReactor *reactor, PtpObjectHeap *object_heap, const FsEntries& entries, u16 vid, u16 pid);
             void Finalize();
         public:
             Result LoopProcess();

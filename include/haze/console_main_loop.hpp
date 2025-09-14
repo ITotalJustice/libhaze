@@ -28,13 +28,15 @@ namespace haze {
             const int m_prio;
             const int m_cpuid;
             const FsEntries m_entries;
+            const u16 m_vid;
+            const u16 m_pid;
             Thread m_thread{};
             UEvent m_cancel_event{};
             EventReactor m_event_reactor{};
 
         public:
-            explicit ConsoleMainLoop(Callback callback, int prio, int cpuid, const FsEntries& entries)
-            : m_callback{callback}, m_prio{prio}, m_cpuid{cpuid}, m_entries{entries} {
+            explicit ConsoleMainLoop(Callback callback, int prio, int cpuid, const FsEntries& entries, u16 vid = 0x057e, u16 pid = 0x201d)
+            : m_callback{callback}, m_prio{prio}, m_cpuid{cpuid}, m_entries{entries}, m_vid{vid}, m_pid{pid} {
                 /* Create cancel event. */
                 ueventCreate(&m_cancel_event, false);
 
@@ -60,7 +62,7 @@ namespace haze {
 
                 /* Configure the PTP responder. */
                 PtpResponder ptp_responder{m_callback};
-                ptp_responder.Initialize(std::addressof(m_event_reactor), std::addressof(ptp_object_heap), m_entries);
+                ptp_responder.Initialize(std::addressof(m_event_reactor), std::addressof(ptp_object_heap), m_entries, m_vid, m_pid);
 
                 /* Ensure we maintain a clean state on exit. */
                 ON_SCOPE_EXIT {

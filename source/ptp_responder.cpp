@@ -36,7 +36,7 @@ namespace haze {
 
     }
 
-    Result PtpResponder::Initialize(EventReactor *reactor, PtpObjectHeap *object_heap, const FsEntries& entries) {
+    Result PtpResponder::Initialize(EventReactor *reactor, PtpObjectHeap *object_heap, const FsEntries& entries, u16 vid, u16 pid) {
         m_object_heap = object_heap;
         m_buffers = GetBuffers();
         m_fs_entries.clear();
@@ -49,7 +49,7 @@ namespace haze {
         }
 
         /* Configure fs proxy. */
-        R_RETURN(m_usb_server.Initialize(std::addressof(MtpInterfaceInfo), SwitchMtpIdVendor, SwitchMtpIdProduct, reactor));
+        R_RETURN(m_usb_server.Initialize(std::addressof(MtpInterfaceInfo), vid, pid, reactor));
     }
 
     void PtpResponder::Finalize() {
