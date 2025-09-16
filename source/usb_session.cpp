@@ -257,8 +257,10 @@ namespace haze {
         log_write("Getting transfer result for URB ID %u on endpoint %d\n", urb_id, ep);
         R_TRY(eventClear(std::addressof(m_endpoints[ep]->CompletionEvent)));
         R_TRY(usbDsEndpoint_GetReportData(m_endpoints[ep], std::addressof(report_data)));
-        R_TRY(usbDsParseReportData(std::addressof(report_data), urb_id, nullptr, out_transferred_size));
-        log_write("Transfer complete, transferred %u bytes\n", *out_transferred_size);
+
+        u32 requestedSize;
+        R_TRY(usbDsParseReportData(std::addressof(report_data), urb_id, &requestedSize, out_transferred_size));
+        log_write("Transfer complete: requested %u bytes, transferred %u bytes same: %u\n", requestedSize, *out_transferred_size, requestedSize == *out_transferred_size);
 
         R_SUCCEED();
     }

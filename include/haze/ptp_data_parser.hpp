@@ -39,6 +39,9 @@ namespace haze {
                     /* End of transmission occurs when receiving a bulk transfer less than the buffer size. */
                     /* PTP uses zero-length termination, so zero is a possible size to receive. */
                     m_eot = m_received_size < haze::UsbBulkPacketBufferSize;
+                    if (m_eot) {
+                        log_write("End of transmission detected (received %u bytes)\n", m_received_size);
+                    }
                 };
 
                 R_RETURN(m_server->ReadPacket(m_data, haze::UsbBulkPacketBufferSize, std::addressof(m_received_size)));
@@ -62,7 +65,9 @@ namespace haze {
                 while (count > 0) {
                     /* If we cannot read more bytes now, flush. */
                     if (m_offset == m_received_size) {
+                        log_write("ReadBuffer: flushing to get more data: %u\n", count);
                         R_TRY(this->Flush());
+                        log_write("ReadBuffer: flushed, got %u bytes left: %u\n", m_received_size, count);
                     }
 
                     /* Calculate how many bytes we can read now. */

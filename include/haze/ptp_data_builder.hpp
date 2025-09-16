@@ -50,6 +50,7 @@ namespace haze {
                     R_TRY(this->Flush());
                 }
 
+                // todo: this needs to handle USB 3.0 packet size.
                 if (util::IsAligned(m_transmitted_size, PtpUsbBulkHighSpeedMaxPacketLength)) {
                     /* If the transmission size was a multiple of wMaxPacketSize, send a zero length packet. */
                     R_TRY(this->Flush());

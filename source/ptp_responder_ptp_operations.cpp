@@ -321,7 +321,7 @@ namespace haze {
         u32 object_id;
         R_TRY(dp.Read(std::addressof(object_id)));
         R_TRY(dp.Finalize());
-        log_write("GetObject: object_id=%u\n", object_id);
+        log_write("\n\n\nGetObject: object_id=%u\n", object_id);
 
         /* Check if we know about the object. If we don't, it's an error. */
         auto * const obj = m_object_database.GetObjectById(object_id);
@@ -371,7 +371,7 @@ namespace haze {
         R_TRY(db.Commit());
 
         /* Write the success response. */
-        log_write("Sent object %u (%s)\n", object_id, obj->GetName());
+        log_write("Sent object %u (%s)\n\n\n", object_id, obj->GetName());
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
     }
 
@@ -479,7 +479,7 @@ namespace haze {
         /* Check if we know about the object. If we don't, it's an error. */
         auto * const obj = m_object_database.GetObjectById(m_send_object_id);
         R_UNLESS(obj != nullptr, haze::ResultInvalidObjectId());
-        log_write("Receiving object %u (%s)\n", m_send_object_id, obj->GetName());
+        log_write("\n\n\nReceiving object %u (%s)\n", m_send_object_id, obj->GetName());
 
         /* Lock the object as a file. */
         FsFile file;
@@ -561,7 +561,7 @@ namespace haze {
         ));
 
         /* Write the success response. */
-        log_write("Received object %u (%s), total size %ld\n", m_send_object_id, obj->GetName(), offset);
+        log_write("Received object %u (%s), total size %ld\n\n\n", m_send_object_id, obj->GetName(), offset);
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
     }
 
