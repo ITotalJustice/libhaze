@@ -25,7 +25,7 @@ std::unique_ptr<haze::ConsoleMainLoop> g_haze{};
 
 } // namespace
 
-bool Initialize(Callback callback, int prio, int cpuid, const FsEntries& entries, u16 vid, u16 pid) {
+bool Initialize(Callback callback, const FsEntries& entries, u16 vid, u16 pid) {
     std::scoped_lock lock{g_mutex};
     if (g_haze) {
         return false;
@@ -38,7 +38,7 @@ bool Initialize(Callback callback, int prio, int cpuid, const FsEntries& entries
     /* Load device firmware version and serial number. */
     HAZE_R_ABORT_UNLESS(haze::LoadDeviceProperties());
 
-    g_haze = std::make_unique<haze::ConsoleMainLoop>(callback, prio, cpuid, entries, vid, pid);
+    g_haze = std::make_unique<haze::ConsoleMainLoop>(callback, entries, vid, pid);
 
     return true;
 }

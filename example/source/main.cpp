@@ -189,7 +189,7 @@ int main(int argc, char** argv) {
     fs_entries.emplace_back(std::make_shared<FsAlbum>(FsImageDirectoryId_Sd));
 
     mutexInit(&g_mutex);
-    haze::Initialize(callbackHandler, 0x2C, 2, fs_entries); // init libhaze (creates thread)
+    haze::Initialize(callbackHandler, fs_entries); // init libhaze (creates thread)
     consoleInit(NULL); // console to display to the screen
 
     // init controller

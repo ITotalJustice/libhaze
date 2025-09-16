@@ -25,8 +25,6 @@ namespace haze {
     class ConsoleMainLoop final : EventConsumer {
         private:
             const Callback m_callback;
-            const int m_prio;
-            const int m_cpuid;
             const FsEntries m_entries;
             const u16 m_vid;
             const u16 m_pid;
@@ -35,8 +33,8 @@ namespace haze {
             EventReactor m_event_reactor{};
 
         public:
-            explicit ConsoleMainLoop(Callback callback, int prio, int cpuid, const FsEntries& entries, u16 vid = 0x057e, u16 pid = 0x201d)
-            : m_callback{callback}, m_prio{prio}, m_cpuid{cpuid}, m_entries{entries}, m_vid{vid}, m_pid{pid} {
+            explicit ConsoleMainLoop(Callback callback, const FsEntries& entries, u16 vid, u16 pid)
+            : m_callback{callback}, m_entries{entries}, m_vid{vid}, m_pid{pid} {
                 /* Create cancel event. */
                 ueventCreate(&m_cancel_event, false);
 
