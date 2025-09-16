@@ -22,6 +22,7 @@ add_library(libhaze
     ${libhaze_SOURCE_DIR}/source/ptp_responder.cpp
     ${libhaze_SOURCE_DIR}/source/usb_session.cpp
     ${libhaze_SOURCE_DIR}/source/threaded_file_transfer.cpp
+    ${libhaze_SOURCE_DIR}/source/log.cpp
 )
 
 target_include_directories(libhaze PUBLIC ${libhaze_SOURCE_DIR}/include)

@@ -49,6 +49,7 @@ namespace haze {
     }
 
     Result PtpResponder::OpenSession(PtpDataParser &dp) {
+        log_write("Opening session...\n");
         R_TRY(dp.Finalize());
 
         /* Close, if we're already open. */
@@ -73,10 +74,12 @@ namespace haze {
         WriteCallbackSession(CallbackType_OpenSession);
 
         /* Write the success response. */
+        log_write("Session opened.\n");
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
     }
 
     Result PtpResponder::CloseSession(PtpDataParser &dp) {
+        log_write("Closing session...\n");
         R_TRY(dp.Finalize());
 
         this->ForceCloseSession();
@@ -84,10 +87,12 @@ namespace haze {
         WriteCallbackSession(CallbackType_CloseSession);
 
         /* Write the success response. */
+        log_write("Session closed.\n");
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
     }
 
     Result PtpResponder::GetStorageIds(PtpDataParser &dp) {
+        log_write("GetStorageIds\n");
         R_TRY(dp.Finalize());
 
         PtpDataBuilder db(m_buffers->usb_bulk_write_buffer, std::addressof(m_usb_server));
@@ -103,10 +108,12 @@ namespace haze {
         }));
 
         /* Write the success response. */
+        log_write("Returning %zu storage IDs\n", storage_ids.size());
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
     }
 
     Result PtpResponder::GetStorageInfo(PtpDataParser &dp) {
+        log_write("GetStorageInfo\n");
         PtpDataBuilder db(m_buffers->usb_bulk_write_buffer, std::addressof(m_usb_server));
         PtpStorageInfo storage_info(DefaultStorageInfo);
 
@@ -114,6 +121,7 @@ namespace haze {
         u32 storage_id;
         R_TRY(dp.Read(std::addressof(storage_id)));
         R_TRY(dp.Finalize());
+        log_write("Requested info for storage ID %u\n", storage_id);
 
         const auto it = std::find_if(m_fs_entries.cbegin(), m_fs_entries.cend(), [storage_id](auto& e){
             return storage_id == e.storage_id;
@@ -144,6 +152,7 @@ namespace haze {
         }));
 
         /* Write the success response. */
+        log_write("Returning info for storage ID %u: total=%ld, free=%ld\n", storage_id, total_space, free_space);
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
     }
 
@@ -156,6 +165,7 @@ namespace haze {
         R_TRY(dp.Read(std::addressof(object_format_code)));
         R_TRY(dp.Read(std::addressof(association_object_handle)));
         R_TRY(dp.Finalize());
+        log_write("GetObjectHandles: storage_id=%u, format_code=%u, association_object_handle=%u\n", storage_id, object_format_code, association_object_handle);
 
         /* Handle top-level requests. */
         if (storage_id == PtpGetObjectHandles_AllStorage) {
@@ -170,6 +180,7 @@ namespace haze {
         /* Check if we know about the object. If we don't, it's an error. */
         auto * const obj = m_object_database.GetObjectById(association_object_handle);
         R_UNLESS(obj != nullptr, haze::ResultInvalidObjectId());
+        log_write("Enumerating children of object %u (%s)\n", obj->GetObjectId(), obj->GetName());
 
         /* Try to read the object as a directory. */
         FsDir dir;
@@ -213,6 +224,7 @@ namespace haze {
         R_TRY(db.Commit());
 
         /* Write the success response. */
+        log_write("Returning %ld object handles\n", entry_count);
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
     }
 
@@ -223,10 +235,12 @@ namespace haze {
         u32 object_id;
         R_TRY(dp.Read(std::addressof(object_id)));
         R_TRY(dp.Finalize());
+        log_write("GetObjectInfo: object_id=%u\n", object_id);
 
         /* Check if we know about the object. If we don't, it's an error. */
         auto * const obj = m_object_database.GetObjectById(object_id);
         R_UNLESS(obj != nullptr, haze::ResultInvalidObjectId());
+        log_write("Returning info for object %u (%s)\n", object_id, obj->GetName());
 
         /* Build info about the object. */
         PtpObjectInfo object_info(DefaultObjectInfo);
@@ -296,6 +310,7 @@ namespace haze {
         }));
 
         /* Write the success response. */
+        log_write("Returned info for object %u (%s)\n", object_id, obj->GetName());
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
     }
 
@@ -306,14 +321,17 @@ namespace haze {
         u32 object_id;
         R_TRY(dp.Read(std::addressof(object_id)));
         R_TRY(dp.Finalize());
+        log_write("GetObject: object_id=%u\n", object_id);
 
         /* Check if we know about the object. If we don't, it's an error. */
         auto * const obj = m_object_database.GetObjectById(object_id);
         R_UNLESS(obj != nullptr, haze::ResultInvalidObjectId());
+        log_write("Sending object %u (%s)\n", object_id, obj->GetName());
 
         /* Lock the object as a file. */
         FsFile file;
         R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Read, std::addressof(file)));
+        log_write("Opened file %s\n", obj->GetName());
 
         /* Ensure we maintain a clean state on exit. */
         ON_SCOPE_EXIT { Fs(obj).CloseFile(std::addressof(file)); };
@@ -321,6 +339,7 @@ namespace haze {
         /* Get the file's size. */
         s64 file_size = 0;
         R_TRY(Fs(obj).GetFileSize(std::addressof(file), std::addressof(file_size)));
+        log_write("File size: %ld\n", file_size);
 
         /* Send the header and file size. */
         R_TRY(db.AddDataHeader(m_request_header, file_size));
@@ -333,6 +352,7 @@ namespace haze {
             mode = sphaira::thread::Mode::SingleThreadedIfSmaller;
         }
 
+        log_write("Using %s mode for transfer\n", mode == sphaira::thread::Mode::MultiThreaded ? "multi-threaded" : "single-threaded");
         R_TRY(sphaira::thread::Transfer(file_size,
             [this, &file, &obj](void* data, s64 off, s64 size, u64* bytes_read) -> Result {
                 /* Get the next batch. */
@@ -351,6 +371,7 @@ namespace haze {
         R_TRY(db.Commit());
 
         /* Write the success response. */
+        log_write("Sent object %u (%s)\n", object_id, obj->GetName());
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
     }
 
@@ -363,6 +384,7 @@ namespace haze {
         R_TRY(rdp.Read(std::addressof(storage_id)));
         R_TRY(rdp.Read(std::addressof(parent_object)));
         R_TRY(rdp.Finalize());
+        log_write("SendObjectInfo: storage_id=%u, parent_object=%u\n", storage_id, parent_object);
 
         PtpDataParser dp(m_buffers->usb_bulk_read_buffer, std::addressof(m_usb_server));
         PtpObjectInfo info(DefaultObjectInfo);
@@ -404,6 +426,7 @@ namespace haze {
         /* Check if we know about the parent object. If we don't, it's an error. */
         auto * const parentobj = m_object_database.GetObjectById(parent_object);
         R_UNLESS(parentobj != nullptr, haze::ResultInvalidObjectId());
+        log_write("Creating object %s in parent object %u (%s)\n", m_buffers->filename_string_buffer, parentobj->GetObjectId(), parentobj->GetName());
 
         /* Make a new object with the intended name. */
         PtpNewObjectInfo new_object_info;
@@ -413,6 +436,7 @@ namespace haze {
         /* Create the object in the database. */
         PtpObject *obj;
         R_TRY(m_object_database.CreateOrFindObject(parentobj->GetName(), m_buffers->filename_string_buffer, parentobj->GetObjectId(), parentobj->GetStorageId(), std::addressof(obj)));
+        log_write("Created object %s with temporary ID %u\n", obj->GetName(), obj->GetObjectId());
 
         /* Ensure we maintain a clean state on failure. */
         ON_RESULT_FAILURE { m_object_database.DeleteObject(obj); };
@@ -433,6 +457,7 @@ namespace haze {
         }
 
         /* Write the success response. */
+        log_write("Created object %u (%s)\n", new_object_info.object_id, obj->GetName());
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok, new_object_info));
     }
 
@@ -454,10 +479,12 @@ namespace haze {
         /* Check if we know about the object. If we don't, it's an error. */
         auto * const obj = m_object_database.GetObjectById(m_send_object_id);
         R_UNLESS(obj != nullptr, haze::ResultInvalidObjectId());
+        log_write("Receiving object %u (%s)\n", m_send_object_id, obj->GetName());
 
         /* Lock the object as a file. */
         FsFile file;
         R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Write | FsOpenMode_Append, std::addressof(file)));
+        log_write("Opened file %s\n", obj->GetName());
 
         /* Ensure we maintain a clean state on exit. */
         ON_SCOPE_EXIT { Fs(obj).CloseFile(std::addressof(file)); };
@@ -468,14 +495,17 @@ namespace haze {
 
         if (m_send_prop_list) {
             file_size = m_send_prop_list->size;
+            log_write("File size from property list: %ld\n", file_size);
         } else {
             if (data_header.length > sizeof(PtpUsbBulkContainer)) {
                 /* Got the real file size. */
                 file_size = data_header.length - sizeof(PtpUsbBulkContainer);
                 R_TRY(Fs(obj).SetFileSize(std::addressof(file), file_size));
+                log_write("File size from data header: %ld\n", file_size);
             } else {
                 /* Truncate the file after locking for write. */
                 R_TRY(Fs(obj).SetFileSize(std::addressof(file), 0));
+                log_write("File size unknown, starting at 0\n");
             }
         }
 
@@ -496,6 +526,7 @@ namespace haze {
 
         bool is_done = false;
 
+        log_write("Using %s mode for transfer\n", mode == sphaira::thread::Mode::MultiThreaded ? "multi-threaded" : "single-threaded");
         R_TRY(sphaira::thread::Transfer(file_size,
             [this, &dp, &is_done](void* data, s64 off, s64 size, u64* bytes_read) -> Result {
                 if (is_done) {
@@ -505,7 +536,9 @@ namespace haze {
 
                 /* Read as many bytes as we can. */
                 u32 bytes_received;
+                log_write("Reading up to %ld bytes at offset %ld\n", size, off);
                 const Result read_res = dp.ReadBuffer((u8*)data, size, std::addressof(bytes_received));
+                log_write("Received %u bytes\n", bytes_received);
                 *bytes_read = bytes_received;
 
                 /* If we received fewer bytes than the batch size, we're done. */
@@ -518,7 +551,9 @@ namespace haze {
             },
             [this, &file, &obj, &offset](const void* data, s64 off, s64 size) -> Result {
                 /* Write to the file. */
+                log_write("Writing %ld bytes at offset %ld\n", size, off);
                 R_TRY(Fs(obj).WriteFile(std::addressof(file), off, data, size, 0));
+                log_write("Wrote %ld bytes at offset %ld\n", size, off);
                 WriteCallbackProgress(CallbackType_WriteProgress, off, size);
                 offset += size;
                 R_SUCCEED();
@@ -526,6 +561,7 @@ namespace haze {
         ));
 
         /* Write the success response. */
+        log_write("Received object %u (%s), total size %ld\n", m_send_object_id, obj->GetName(), offset);
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
     }
 
@@ -534,6 +570,7 @@ namespace haze {
         u32 object_id;
         R_TRY(dp.Read(std::addressof(object_id)));
         R_TRY(dp.Finalize());
+        log_write("DeleteObject: object_id=%u\n", object_id);
 
         /* Disallow deleting the storage root. */
         const auto it = std::find_if(m_fs_entries.cbegin(), m_fs_entries.cend(), [object_id](auto& e){
@@ -544,6 +581,7 @@ namespace haze {
         /* Check if we know about the object. If we don't, it's an error. */
         auto * const obj = m_object_database.GetObjectById(object_id);
         R_UNLESS(obj != nullptr, haze::ResultInvalidObjectId());
+        log_write("Deleting object %u (%s)\n", object_id, obj->GetName());
 
         /* Figure out what type of object this is. */
         FsDirEntryType entry_type;
@@ -562,6 +600,7 @@ namespace haze {
         m_object_database.DeleteObject(obj);
 
         /* Write the success response. */
+        log_write("Deleted object %u (%s)\n", object_id, obj->GetName());
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
     }
 

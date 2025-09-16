@@ -1,5 +1,6 @@
 #include "haze/threaded_file_transfer.hpp"
 #include "haze/thread.hpp"
+#include "haze/log.hpp"
 
 #include <vector>
 #include <algorithm>
@@ -160,7 +161,9 @@ Result ThreadData::SetWriteBuf(std::vector<u8>& buf, s64 size) {
             R_SUCCEED();
         }
 
+        haze::log_write("SetWriteBuf: waiting for space...\n");
         R_TRY(condvarWait(std::addressof(can_read), std::addressof(mutex)));
+        haze::log_write("SetWriteBuf: got space!\n");
     }
 
     ON_SCOPE_EXIT { mutexUnlock(std::addressof(mutex)); };
@@ -176,7 +179,10 @@ Result ThreadData::GetWriteBuf(std::vector<u8>& buf_out, s64& off_out) {
             buf_out.resize(0);
             R_SUCCEED();
         }
+
+        haze::log_write("GetWriteBuf: waiting for data...\n");
         R_TRY(condvarWait(std::addressof(can_write), std::addressof(mutex)));
+        haze::log_write("GetWriteBuf: got data!\n");
     }
 
     ON_SCOPE_EXIT { mutexUnlock(std::addressof(mutex)); };
@@ -262,6 +268,7 @@ Result TransferInternal(s64 size, const ReadCallback& rfunc, const WriteCallback
     buffer_size = std::min<u64>(size, buffer_size);
 
     if (mode == Mode::SingleThreaded) {
+        haze::log_write("Using single-threaded transfer\n");
         std::vector<u8> buf(buffer_size);
 
         s64 offset{};
@@ -281,6 +288,7 @@ Result TransferInternal(s64 size, const ReadCallback& rfunc, const WriteCallback
         R_SUCCEED();
     }
     else {
+        haze::log_write("Using multi-threaded transfer\n");
         UEvent uevent;
         ueventCreate(&uevent, false);
         ThreadData t_data{uevent, size, rfunc, wfunc, buffer_size};
@@ -301,6 +309,7 @@ Result TransferInternal(s64 size, const ReadCallback& rfunc, const WriteCallback
 
         // waits until either an error or write thread has finished.
         waitSingle(waiterForUEvent(&uevent), UINT64_MAX);
+        haze::log_write("One thread finished or error occurred\n");
 
         // wait for all threads to close.
         for (;;) {
@@ -314,6 +323,7 @@ Result TransferInternal(s64 size, const ReadCallback& rfunc, const WriteCallback
             break;
         }
 
+        haze::log_write("Both threads finished\n");
         R_RETURN(t_data.GetResults());
     }
 }

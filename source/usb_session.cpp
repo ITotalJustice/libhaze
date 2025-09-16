@@ -247,15 +247,18 @@ namespace haze {
     }
 
     Result UsbSession::TransferAsync(UsbSessionEndpoint ep, void *buffer, u32 size, u32 *out_urb_id) {
+        log_write("Starting async transfer of %u bytes on endpoint %d\n", size, ep);
         R_RETURN(usbDsEndpoint_PostBufferAsync(m_endpoints[ep], buffer, size, out_urb_id));
     }
 
     Result UsbSession::GetTransferResult(UsbSessionEndpoint ep, u32 urb_id, u32 *out_transferred_size) {
         UsbDsReportData report_data;
 
+        log_write("Getting transfer result for URB ID %u on endpoint %d\n", urb_id, ep);
         R_TRY(eventClear(std::addressof(m_endpoints[ep]->CompletionEvent)));
         R_TRY(usbDsEndpoint_GetReportData(m_endpoints[ep], std::addressof(report_data)));
         R_TRY(usbDsParseReportData(std::addressof(report_data), urb_id, nullptr, out_transferred_size));
+        log_write("Transfer complete, transferred %u bytes\n", *out_transferred_size);
 
         R_SUCCEED();
     }

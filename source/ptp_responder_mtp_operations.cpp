@@ -122,11 +122,13 @@ namespace haze {
         R_TRY(dp.Finalize());
 
         /* Ensure we have a valid property code before continuing. */
+        log_write("GetObjectPropValue: object_id=%u, property_code=%d\n", object_id, property_code);
         R_UNLESS(IsSupportedObjectPropertyCode(property_code), haze::ResultUnknownPropertyCode());
 
         /* Check if we know about the object. If we don't, it's an error. */
         auto * const obj = m_object_database.GetObjectById(object_id);
         R_UNLESS(obj != nullptr, haze::ResultInvalidObjectId());
+        log_write("Writing properties for object %u (%s)\n", object_id, obj->GetName());
 
         /* Define helper for getting the object type. */
         const auto GetObjectType = [&] (FsDirEntryType *out_entry_type) {
@@ -200,6 +202,7 @@ namespace haze {
         }));
 
         /* Write the success response. */
+        log_write("Wrote property code %d for object %u (%s)\n", property_code, object_id, obj->GetName());
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
     }
 
@@ -216,6 +219,7 @@ namespace haze {
         R_TRY(dp.Read(std::addressof(group_code)));
         R_TRY(dp.Read(std::addressof(depth)));
         R_TRY(dp.Finalize());
+        log_write("GetObjectPropList: object_id=%u, object_format=%u, property_code=%d, group_code=%d, depth=%d\n", object_id, object_format, property_code, group_code, depth);
 
         /* Ensure format is unspecified. */
         R_UNLESS(object_format == 0, haze::ResultInvalidArgument());
@@ -232,6 +236,7 @@ namespace haze {
         /* Check if we know about the object. If we don't, it's an error. */
         auto * const obj = m_object_database.GetObjectById(object_id);
         R_UNLESS(obj != nullptr, haze::ResultInvalidObjectId());
+        log_write("Writing properties for object %u (%s)\n", object_id, obj->GetName());
 
         /* Define helper for getting the object type. */
         const auto GetObjectType = [&] (FsDirEntryType *out_entry_type) {
@@ -341,6 +346,7 @@ namespace haze {
         }));
 
         /* Write the success response. */
+        log_write("Wrote %u properties for object %u (%s)\n", num_output_elements, object_id, obj->GetName());
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
     }
 
@@ -360,6 +366,7 @@ namespace haze {
         R_TRY(rdp.Read(std::addressof(object_size_msb)));
         R_TRY(rdp.Read(std::addressof(object_size_lsb)));
         R_TRY(rdp.Finalize());
+        log_write("SendObjectPropList: storage_id=%u, parent_object=%u, format_code=%u, object_size=%u%08u\n", storage_id, parent_object, format_code, object_size_msb, object_size_lsb);
 
         /* Rewrite requests for creating in storage directories. */
         if (parent_object == PtpGetObjectHandles_RootParent) {
@@ -369,6 +376,7 @@ namespace haze {
         /* Check if we know about the parent object. If we don't, it's an error. */
         auto * const parentobj = m_object_database.GetObjectById(parent_object);
         R_UNLESS(parentobj != nullptr, haze::ResultInvalidObjectId());
+        log_write("Creating new object in parent %u (%s)\n", parent_object, parentobj->GetName());
 
         PtpDataParser dp(m_buffers->usb_bulk_read_buffer, std::addressof(m_usb_server));
 
@@ -382,6 +390,7 @@ namespace haze {
         /* Get the number of properties */
         u32 num_properties;
         R_TRY(dp.Read(std::addressof(num_properties)));
+        log_write("SendObjectPropList: num_properties=%u\n", num_properties);
 
         for (u32 i = 0; i < num_properties; i++) {
             /* Read the object handle. */
@@ -417,6 +426,7 @@ namespace haze {
         /* Add a new object in the database with the new name. */
         PtpObject *newobj;
         R_TRY(m_object_database.CreateOrFindObject(parentobj->GetName(), m_buffers->filename_string_buffer, parentobj->GetObjectId(), parentobj->GetStorageId(), std::addressof(newobj)));
+        log_write("Created new object %u (%s)\n", newobj->GetObjectId(), newobj->GetName());
 
         /* Create prop list. */
         ObjectPropList prop_list{};
@@ -453,6 +463,7 @@ namespace haze {
 
         /* Save prop list and return success. */
         m_send_prop_list = prop_list;
+        log_write("Prepared to receive object %u (%s) of size %zu\n", new_object_info.object_id, newobj->GetName(), prop_list.size);
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok, new_object_info));
     }
 
@@ -463,6 +474,7 @@ namespace haze {
         R_TRY(rdp.Read(std::addressof(object_id)));
         R_TRY(rdp.Read(std::addressof(property_code)));
         R_TRY(rdp.Finalize());
+        log_write("SetObjectPropValue: object_id=%u, property_code=%d\n", object_id, property_code);
 
         PtpDataParser dp(m_buffers->usb_bulk_read_buffer, std::addressof(m_usb_server));
 
@@ -479,6 +491,7 @@ namespace haze {
         /* Check if we know about the object. If we don't, it's an error. */
         auto * const obj = m_object_database.GetObjectById(object_id);
         R_UNLESS(obj != nullptr, haze::ResultInvalidObjectId());
+        log_write("Renaming object %u (%s)\n", object_id, obj->GetName());
 
         /* We are reading a file name. */
         R_TRY(dp.ReadString(m_buffers->filename_string_buffer));
@@ -534,6 +547,7 @@ namespace haze {
         m_object_database.RegisterObject(newobj, object_id);
 
         /* Write the success response. */
+        log_write("Renamed object %u to %s\n", object_id, newobj->GetName());
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
     }
 

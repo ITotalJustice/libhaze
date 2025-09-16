@@ -29,6 +29,7 @@ namespace haze {
     void PtpObjectHeap::Initialize() {
         /* If we're already initialized, skip re-initialization. */
         if (m_heap_block_size != 0) {
+            log_write("Heap already initialized, skipping re-initialization\n");
             return;
         }
 
@@ -42,6 +43,7 @@ namespace haze {
 
         /* Allocate the memory. */
         m_heap_block_size = std::min(MaxHeapBlock, m_heap_block_size);
+        log_write("Allocating %u bytes for each of %zu heap blocks\n", m_heap_block_size, NumHeapBlocks);
         for (size_t i = 0; i < NumHeapBlocks; i++) {
             m_heap_blocks[i] = std::malloc(m_heap_block_size);
             HAZE_ASSERT(m_heap_blocks[i] != nullptr);
@@ -53,6 +55,7 @@ namespace haze {
 
     void PtpObjectHeap::Finalize() {
         if (m_heap_block_size == 0) {
+            log_write("Heap not initialized, skipping finalization\n");
             return;
         }
 
@@ -65,6 +68,7 @@ namespace haze {
         m_next_address       = nullptr;
         m_heap_block_size    = 0;
         m_current_heap_block = 0;
+        log_write("Heap finalized\n");
     }
 
 }

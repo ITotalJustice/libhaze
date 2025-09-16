@@ -80,7 +80,7 @@ struct FileSystemProxyImpl {
 using FsEntries = std::vector<std::shared_ptr<FileSystemProxyImpl>>;
 
 /* Callback is optional */
-bool Initialize(Callback callback, const FsEntries& entries, u16 vid = 0x057e, u16 pid = 0x201d);
+bool Initialize(Callback callback, const FsEntries& entries, u16 vid = 0x057e, u16 pid = 0x201d, bool enable_log = false);
 void Exit();
 
 } // namespace haze

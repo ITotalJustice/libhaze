@@ -33,42 +33,56 @@ namespace haze {
             EventReactor m_event_reactor{};
 
         public:
-            explicit ConsoleMainLoop(Callback callback, const FsEntries& entries, u16 vid, u16 pid)
+            explicit ConsoleMainLoop(Callback callback, const FsEntries& entries, u16 vid, u16 pid, bool init_log)
             : m_callback{callback}, m_entries{entries}, m_vid{vid}, m_pid{pid} {
+                if (init_log) {
+                    log_file_init();
+                }
+
+                log_write("libhaze log initialized\n");
+
                 /* Create cancel event. */
                 ueventCreate(&m_cancel_event, false);
+                log_write("Created cancel event\n");
 
                 /* Clear the event reactor. */
                 m_event_reactor.SetResult(ResultSuccess());
                 m_event_reactor.AddConsumer(this, waiterForUEvent(&m_cancel_event));
+                log_write("Added cancel event to reactor\n");
 
                 /* Create and start thread. */
                 sphaira::utils::CreateThread(&m_thread, thread_func, this, 1024*64);
                 threadStart(&m_thread);
+                log_write("Started main loop thread\n");
             }
 
             ~ConsoleMainLoop() {
                 ueventSignal(&m_cancel_event);
                 threadWaitForExit(&m_thread);
                 threadClose(&m_thread);
+                log_file_exit();
             }
 
         public:
             void RunApplication() {
+                log_write("Entering main loop\n");
                 /* Declare the object heap, to hold the database for an active session. */
                 PtpObjectHeap ptp_object_heap;
 
                 /* Configure the PTP responder. */
                 PtpResponder ptp_responder{m_callback};
                 ptp_responder.Initialize(std::addressof(m_event_reactor), std::addressof(ptp_object_heap), m_entries, m_vid, m_pid);
+                log_write("Initialized PTP responder\n");
 
                 /* Ensure we maintain a clean state on exit. */
                 ON_SCOPE_EXIT {
                     /* Finalize the PTP responder. */
                     ptp_responder.Finalize();
+                    log_write("Finalized PTP responder\n");
                 };
 
                 /* Begin processing requests. */
+                log_write("Beginning request processing\n");
                 ptp_responder.LoopProcess();
             }
 

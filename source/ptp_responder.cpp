@@ -37,6 +37,7 @@ namespace haze {
     }
 
     Result PtpResponder::Initialize(EventReactor *reactor, PtpObjectHeap *object_heap, const FsEntries& entries, u16 vid, u16 pid) {
+        log_write("Initializing PTP responder...\n");
         m_object_heap = object_heap;
         m_buffers = GetBuffers();
         m_fs_entries.clear();
@@ -49,6 +50,7 @@ namespace haze {
         }
 
         /* Configure fs proxy. */
+        log_write("Configured %zu filesystem entries\n", m_fs_entries.size());
         R_RETURN(m_usb_server.Initialize(std::addressof(MtpInterfaceInfo), vid, pid, reactor));
     }
 
@@ -77,43 +79,55 @@ namespace haze {
 
     Result PtpResponder::HandleRequest() {
         ON_RESULT_FAILURE {
+            log_write("Request handling failed.\n");
             /* For general failure modes, the failure is unrecoverable. Close the session. */
             this->ForceCloseSession();
         };
 
         R_TRY_CATCH(this->HandleRequestImpl()) {
             R_CATCH(haze::ResultUnknownRequestType) {
+                log_write("Error: Unknown request type: 0x%04x\n", m_request_header.type);
                 R_TRY(this->WriteResponse(PtpResponseCode_GeneralError));
             }
             R_CATCH(haze::ResultSessionNotOpen) {
+                log_write("Error: Session not open.\n");
                 R_TRY(this->WriteResponse(PtpResponseCode_SessionNotOpen));
             }
             R_CATCH(haze::ResultOperationNotSupported) {
+                log_write("Error: Operation not supported: 0x%04x\n", m_request_header.code);
                 R_TRY(this->WriteResponse(PtpResponseCode_OperationNotSupported));
             }
             R_CATCH(haze::ResultInvalidStorageId) {
+                log_write("Error: Invalid storage ID.\n");
                 R_TRY(this->WriteResponse(PtpResponseCode_InvalidStorageId));
             }
             R_CATCH(haze::ResultInvalidObjectId) {
+                log_write("Error: Invalid object ID.\n");
                 R_TRY(this->WriteResponse(PtpResponseCode_InvalidObjectHandle));
             }
             R_CATCH(haze::ResultUnknownPropertyCode) {
+                log_write("Error: Unknown property code.\n");
                 R_TRY(this->WriteResponse(PtpResponseCode_MtpObjectPropNotSupported));
             }
             R_CATCH(haze::ResultInvalidPropertyValue) {
+                log_write("Error: Invalid property value.\n");
                 R_TRY(this->WriteResponse(PtpResponseCode_MtpInvalidObjectPropValue));
             }
             R_CATCH(haze::ResultGroupSpecified) {
+                log_write("Error: Specification by group unsupported.\n");
                 R_TRY(this->WriteResponse(PtpResponseCode_MtpSpecificationByGroupUnsupported));
             }
             R_CATCH(haze::ResultDepthSpecified) {
+                log_write("Error: Specification by depth unsupported.\n");
                 R_TRY(this->WriteResponse(PtpResponseCode_MtpSpecificationByDepthUnsupported));
             }
             R_CATCH(haze::ResultInvalidArgument) {
+                log_write("Error: Invalid argument.\n");
                 R_TRY(this->WriteResponse(PtpResponseCode_GeneralError));
             }
             R_CATCH_MODULE(fs) {
                 /* Errors from fs are typically recoverable. */
+                log_write("Filesystem error: 0x%08x\n", R_CURRENT_RESULT.GetValue());
                 R_TRY(this->WriteResponse(PtpResponseCode_GeneralError));
             }
         } R_END_TRY_CATCH;
@@ -127,7 +141,9 @@ namespace haze {
 
         switch (m_request_header.type) {
             case PtpUsbBulkContainerType_Command: R_RETURN(this->HandleCommandRequest(dp));
-            default:                              R_THROW(haze::ResultUnknownRequestType());
+            default:
+                log_write("Error: Unknown request type: 0x%04x\n", m_request_header.type);
+                R_THROW(haze::ResultUnknownRequestType());
         }
     }
 
@@ -136,6 +152,7 @@ namespace haze {
             R_THROW(haze::ResultSessionNotOpen());
         }
 
+        log_write("Handling request: 0x%04x\n", m_request_header.code);
         switch (m_request_header.code) {
             case PtpOperationCode_GetDeviceInfo:              R_RETURN(this->GetDeviceInfo(dp));           break;
             case PtpOperationCode_OpenSession:                R_RETURN(this->OpenSession(dp));             break;
@@ -156,12 +173,14 @@ namespace haze {
             case PtpOperationCode_MtpSendObjectPropList:      R_RETURN(this->SendObjectPropList(dp));      break;
             default:
             {
+                log_write("Error: Operation not supported: 0x%04x\n", m_request_header.code);
                 R_THROW(haze::ResultOperationNotSupported());
             }
         }
     }
 
     void PtpResponder::ForceCloseSession() {
+        log_write("Force closing session.\n");
         if (m_session_open) {
             m_session_open = false;
             m_object_database.Finalize();

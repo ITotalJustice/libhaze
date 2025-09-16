@@ -42,18 +42,23 @@ namespace haze {
 
         /* If we're not configured yet, wait to become configured first. */
         if (!g_usb_session.GetConfigured()) {
+            log_write("Not configured, waiting for configuration...\n");
             R_TRY(m_reactor->WaitFor(std::addressof(waiter_idx), waiterForEvent(usbDsGetStateChangeEvent())));
             R_TRY(eventClear(usbDsGetStateChangeEvent()));
+            log_write("Woke up from configuration wait\n");
 
             R_THROW(haze::ResultNotConfigured());
         }
 
         /* Select the appropriate endpoint and begin a transfer. */
         UsbSessionEndpoint ep = read ? UsbSessionEndpoint_Read : UsbSessionEndpoint_Write;
+        log_write("%s %u bytes\n", read ? "Reading" : "Writing", size);
         R_TRY(g_usb_session.TransferAsync(ep, page, size, std::addressof(urb_id)));
 
         /* Try to wait for the event. */
+        log_write("Waiting for transfer completion...\n");
         R_TRY(m_reactor->WaitFor(std::addressof(waiter_idx), waiterForEvent(g_usb_session.GetCompletionEvent(ep))));
+        log_write("Woke up from transfer wait\n");
 
         /* Return what we transferred. */
         R_RETURN(g_usb_session.GetTransferResult(ep, urb_id, out_size_transferred));

@@ -51,6 +51,7 @@ namespace haze {
     Result EventReactor::WaitForImpl(s32 *out_arg_waiter, const Waiter *arg_waiters, s32 num_arg_waiters) {
         HAZE_ASSERT(0 < num_arg_waiters && num_arg_waiters <= svc::ArgumentHandleCountMax);
         HAZE_ASSERT(m_num_wait_objects + num_arg_waiters <= svc::ArgumentHandleCountMax);
+        log_write("Waiting for %d waiters + %d internal waiters\n", num_arg_waiters, m_num_wait_objects);
 
         while (true) {
             /* Check if we should wait for an event. */
@@ -61,16 +62,20 @@ namespace haze {
                 m_waiters[i + m_num_wait_objects] = arg_waiters[i];
             }
 
+            log_write("Waiting for %d total waiters\n", m_num_wait_objects + num_arg_waiters);
             s32 idx;
             HAZE_R_ABORT_UNLESS(waitObjects(std::addressof(idx), m_waiters, m_num_wait_objects + num_arg_waiters, svc::WaitInfinite));
+            log_write("Woke up, idx=%d\n", idx);
 
             /* If a waiter in the argument list was signaled, return it. */
             if (idx >= m_num_wait_objects) {
                 *out_arg_waiter = idx - m_num_wait_objects;
+                log_write("Returning idx=%d\n", *out_arg_waiter);
                 R_SUCCEED();
             }
 
             /* Otherwise, process the event as normal. */
+            log_write("Processing internal event idx=%d\n", idx);
             m_consumers[idx]->ProcessEvent();
         }
     }

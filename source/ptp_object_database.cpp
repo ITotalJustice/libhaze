@@ -86,6 +86,7 @@ namespace haze {
     void PtpObjectDatabase::RegisterObject(PtpObject *object, u32 desired_id) {
         /* If the object is already registered, skip registration. */
         if (object->GetIsRegistered()) {
+            log_write("Object %s is already registered with ID %u, skipping register\n", object->GetName(), object->GetObjectId());
             return;
         }
 
@@ -95,6 +96,7 @@ namespace haze {
         }
 
         /* Insert object into trees. */
+        log_write("Registering object %u (%s)\n", desired_id, object->GetName());
         object->Register(desired_id);
         m_object_id_tree.insert(*object);
         m_name_tree.insert(*object);
@@ -103,16 +105,19 @@ namespace haze {
     void PtpObjectDatabase::UnregisterObject(PtpObject *object) {
         /* If the object is not registered, skip trying to unregister. */
         if (!object->GetIsRegistered()) {
+            log_write("Object %s is not registered, skipping unregister\n", object->GetName());
             return;
         }
 
         /* Remove object from trees. */
+        log_write("Unregistering object %u (%s)\n", object->GetObjectId(), object->GetName());
         m_object_id_tree.erase(m_object_id_tree.iterator_to(*object));
         m_name_tree.erase(m_name_tree.iterator_to(*object));
         object->Unregister();
     }
 
     void PtpObjectDatabase::DeleteObject(PtpObject *object) {
+        log_write("Deleting object %u (%s)\n", object->GetObjectId(), object->GetName());
         /* Unregister the object as required. */
         this->UnregisterObject(object);
 
@@ -121,6 +126,8 @@ namespace haze {
     }
 
     Result PtpObjectDatabase::CreateAndRegisterObjectId(const char *parent_name, const char *name, u32 parent_id, u32 storage_id, u32 *out_object_id) {
+        log_write("Creating object ID for %s/%s\n", parent_name, name);
+
         /* Try to create the object. */
         PtpObject *object;
         R_TRY(this->CreateOrFindObject(parent_name, name, parent_id, storage_id, std::addressof(object)));
@@ -137,8 +144,10 @@ namespace haze {
     PtpObject *PtpObjectDatabase::GetObjectById(u32 object_id) {
         /* Find in ID mapping. */
         if (auto it = m_object_id_tree.find_key(object_id); it != m_object_id_tree.end()) {
+            log_write("Found object ID %u (%s)\n", object_id, it->GetName());
             return std::addressof(*it);
         } else {
+            log_write("Object ID %u not found\n", object_id);
             return nullptr;
         }
     }
@@ -146,8 +155,10 @@ namespace haze {
     PtpObject *PtpObjectDatabase::GetObjectByName(const char *name) {
         /* Find in name mapping. */
         if (auto it = m_name_tree.find_key(name); it != m_name_tree.end()) {
+            log_write("Found object name %s (ID %u)\n", name, it->GetObjectId());
             return std::addressof(*it);
         } else {
+            log_write("Object name %s not found\n", name);
             return nullptr;
         }
     }

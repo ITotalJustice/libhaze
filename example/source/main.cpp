@@ -188,8 +188,17 @@ int main(int argc, char** argv) {
     fs_entries.emplace_back(std::make_shared<FsSdmc>());
     fs_entries.emplace_back(std::make_shared<FsAlbum>(FsImageDirectoryId_Sd));
 
+    // default vid/pid for switch.
+    const u16 vid = 0x057e;
+    const u16 pid = 0x201d;
+    // if set, logs will be written to sdmc:/haze_log.txt
+    // logs are buffered, so you must first exit libhaze in order to read the log file.
+    // you can change this behavoir by editing source/log.cpp BUFFERED_LOG to 0.
+    // note that if you do this, the performance will suffer greatly.
+    const bool enable_log = true;
+
     mutexInit(&g_mutex);
-    haze::Initialize(callbackHandler, fs_entries); // init libhaze (creates thread)
+    haze::Initialize(callbackHandler, fs_entries, vid, pid, enable_log); // init libhaze (creates thread)
     consoleInit(NULL); // console to display to the screen
 
     // init controller

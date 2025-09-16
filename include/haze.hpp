@@ -25,3 +25,4 @@
 #include <haze/ptp_object_heap.hpp>
 #include <haze/ptp_responder.hpp>
 #include <haze/usb_session.hpp>
+#include <haze/log.hpp>
