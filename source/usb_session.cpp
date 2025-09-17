@@ -19,7 +19,7 @@ namespace haze {
 
     namespace {
 
-        constexpr const u32 DefaultInterfaceNumber = 0;
+        constexpr const u32 DefaultInterfaceNumber = USBDS_DEFAULT_InterfaceNumber;
 
     }
 
@@ -85,7 +85,7 @@ namespace haze {
             .bDescriptorType  = USB_DT_ENDPOINT,
             .bEndpointAddress = USB_ENDPOINT_IN,
             .bmAttributes     = USB_TRANSFER_TYPE_BULK,
-            .wMaxPacketSize   = PtpUsbBulkHighSpeedMaxPacketLength,
+            .wMaxPacketSize   = PtpUsbBulkFullSpeedMaxPacketLength,
         };
 
         struct usb_endpoint_descriptor endpoint_descriptor_out = {
@@ -93,7 +93,7 @@ namespace haze {
             .bDescriptorType  = USB_DT_ENDPOINT,
             .bEndpointAddress = USB_ENDPOINT_OUT,
             .bmAttributes     = USB_TRANSFER_TYPE_BULK,
-            .wMaxPacketSize   = PtpUsbBulkHighSpeedMaxPacketLength,
+            .wMaxPacketSize   = PtpUsbBulkFullSpeedMaxPacketLength,
         };
 
         struct usb_endpoint_descriptor endpoint_descriptor_interrupt = {
@@ -132,7 +132,17 @@ namespace haze {
         endpoint_descriptor_out.bEndpointAddress += interface_descriptor.bInterfaceNumber + 1;
         endpoint_descriptor_interrupt.bEndpointAddress += interface_descriptor.bInterfaceNumber + 2;
 
+        /* Full speed config. */
+        endpoint_descriptor_in.wMaxPacketSize  = PtpUsbBulkFullSpeedMaxPacketLength;
+        endpoint_descriptor_out.wMaxPacketSize = PtpUsbBulkFullSpeedMaxPacketLength;
+        R_TRY(usbDsInterface_AppendConfigurationData(m_interface, UsbDeviceSpeed_Full, std::addressof(interface_descriptor), USB_DT_INTERFACE_SIZE));
+        R_TRY(usbDsInterface_AppendConfigurationData(m_interface, UsbDeviceSpeed_Full, std::addressof(endpoint_descriptor_in), USB_DT_ENDPOINT_SIZE));
+        R_TRY(usbDsInterface_AppendConfigurationData(m_interface, UsbDeviceSpeed_Full, std::addressof(endpoint_descriptor_out), USB_DT_ENDPOINT_SIZE));
+        R_TRY(usbDsInterface_AppendConfigurationData(m_interface, UsbDeviceSpeed_Full, std::addressof(endpoint_descriptor_interrupt), USB_DT_ENDPOINT_SIZE));
+
         /* High speed config. */
+        endpoint_descriptor_in.wMaxPacketSize  = PtpUsbBulkHighSpeedMaxPacketLength;
+        endpoint_descriptor_out.wMaxPacketSize = PtpUsbBulkHighSpeedMaxPacketLength;
         R_TRY(usbDsInterface_AppendConfigurationData(m_interface, UsbDeviceSpeed_High, std::addressof(interface_descriptor), USB_DT_INTERFACE_SIZE));
         R_TRY(usbDsInterface_AppendConfigurationData(m_interface, UsbDeviceSpeed_High, std::addressof(endpoint_descriptor_in), USB_DT_ENDPOINT_SIZE));
         R_TRY(usbDsInterface_AppendConfigurationData(m_interface, UsbDeviceSpeed_High, std::addressof(endpoint_descriptor_out), USB_DT_ENDPOINT_SIZE));
@@ -175,11 +185,11 @@ namespace haze {
             struct usb_device_descriptor device_descriptor = {
                 .bLength            = USB_DT_DEVICE_SIZE,
                 .bDescriptorType    = USB_DT_DEVICE,
-                .bcdUSB             = 0x0200,
+                .bcdUSB             = 0x0110, // set below.
                 .bDeviceClass       = 0x00,
                 .bDeviceSubClass    = 0x00,
                 .bDeviceProtocol    = 0x00,
-                .bMaxPacketSize0    = 0x40,
+                .bMaxPacketSize0    = 0x40, // set below for SuperSpeed.
                 .idVendor           = id_vendor,
                 .idProduct          = id_product,
                 .bcdDevice          = 0x0100,
@@ -188,6 +198,11 @@ namespace haze {
                 .iSerialNumber      = iSerialNumber,
                 .bNumConfigurations = 0x01
             };
+
+            device_descriptor.bcdUSB = 0x0110;
+            R_TRY(usbDsSetUsbDeviceDescriptor(UsbDeviceSpeed_Full, std::addressof(device_descriptor)));
+
+            device_descriptor.bcdUSB = 0x0200;
             R_TRY(usbDsSetUsbDeviceDescriptor(UsbDeviceSpeed_High, std::addressof(device_descriptor)));
 
             device_descriptor.bcdUSB = 0x0300;
@@ -212,7 +227,7 @@ namespace haze {
                 USB_DT_DEVICE_CAPABILITY, /* .bDescriptorType */
                 0x03,                     /* .bDevCapabilityType */
                 0x00,                     /* .bmAttributes */
-                0x0c, 0x00,               /* .wSpeedSupported */
+                0x0e, 0x00,               /* .wSpeedSupported */
                 0x03,                     /* .bFunctionalitySupport */
                 0x00,                     /* .bU1DevExitLat */
                 0x00, 0x00                /* .bU2DevExitLat */
