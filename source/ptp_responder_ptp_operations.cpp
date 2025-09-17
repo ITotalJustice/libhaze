@@ -189,8 +189,8 @@ namespace haze {
         log_write("Enumerating children of object %u (%s)\n", obj->GetObjectId(), obj->GetName());
 
         /* Try to read the object as a directory. */
-        FsDir dir;
-        R_TRY(Fs(obj).OpenDirectory(obj->GetName(), FsDirOpenMode_ReadDirs | FsDirOpenMode_ReadFiles, std::addressof(dir)));
+        Dir dir;
+        R_TRY(Fs(obj).OpenDirectory(obj->GetName(), std::addressof(dir)));
 
         /* Ensure we maintain a clean state on exit. */
         ON_SCOPE_EXIT { Fs(obj).CloseDirectory(std::addressof(dir)); };
@@ -264,34 +264,24 @@ namespace haze {
                 object_info.protection_status = PtpProtectionStatus_ReadOnly;
             }
         } else {
-            /* Figure out what type of object this is. */
-            // todo: check GetType to stat() to get type, size, timestamp and r/w perm in 1 call.
-            FsDirEntryType entry_type;
-            R_TRY(Fs(obj).GetEntryType(obj->GetName(), std::addressof(entry_type)));
-
-            /* Get the size, if we are requesting info about a file. */
-            s64 size = 0;
-            if (entry_type == FsDirEntryType_File) {
-                FsFile file;
-                R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Read, std::addressof(file)));
-
-                /* Ensure we maintain a clean state on exit. */
-                ON_SCOPE_EXIT { Fs(obj).CloseFile(std::addressof(file)); };
-
-                R_TRY(Fs(obj).GetFileSize(std::addressof(file), std::addressof(size)));
-            }
+            /* Get the file attributes. */
+            FileAttr file_attr{};
+            R_TRY(Fs(obj).GetEntryAttributes(obj->GetName(), std::addressof(file_attr)));
 
             object_info.filename               = std::strrchr(obj->GetName(), '/') + 1;
-            object_info.object_compressed_size = size;
+            object_info.object_compressed_size = file_attr.size;
             object_info.parent_object          = obj->GetParentId();
 
-            if (entry_type == FsDirEntryType_Dir) {
+            if (file_attr.type == FileAttrType_DIR) {
                 object_info.object_format    = PtpObjectFormatCode_Association;
                 object_info.association_type = PtpAssociationType_GenericFolder;
             } else {
                 object_info.object_format    = PtpObjectFormatCode_Undefined;
                 object_info.association_type = PtpAssociationType_Undefined;
             }
+
+            object_info.capture_date = BuildTimeStamp(m_buffers->capture_date_string_buffer, file_attr.ctime);
+            object_info.modification_date = BuildTimeStamp(m_buffers->modification_date_string_buffer, file_attr.mtime);
 
             // note: mtp clients seem to ignore this and try and delete / write files anyway...
             if (Fs(obj).IsReadOnly()) {
@@ -344,7 +334,7 @@ namespace haze {
         log_write("Sending object %u (%s)\n", object_id, obj->GetName());
 
         /* Lock the object as a file. */
-        FsFile file;
+        File file;
         R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Read, std::addressof(file)));
         log_write("Opened file %s\n", obj->GetName());
 
@@ -371,7 +361,7 @@ namespace haze {
         R_TRY(sphaira::thread::Transfer(file_size,
             [this, &file, &obj](void* data, s64 off, s64 size, u64* bytes_read) -> Result {
                 /* Get the next batch. */
-                R_TRY(Fs(obj).ReadFile(std::addressof(file), off, data, size, FsReadOption_None, bytes_read));
+                R_TRY(Fs(obj).ReadFile(std::addressof(file), off, data, size, bytes_read));
                 R_SUCCEED();
             },
             [this, &db](const void* data, s64 off, s64 size) -> Result {
@@ -497,7 +487,7 @@ namespace haze {
         log_write("\n\n\nReceiving object %u (%s)\n", m_send_object_id, obj->GetName());
 
         /* Lock the object as a file. */
-        FsFile file;
+        File file;
         R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Write | FsOpenMode_Append, std::addressof(file)));
         log_write("Opened file %s\n", obj->GetName());
 
@@ -567,7 +557,7 @@ namespace haze {
             [this, &file, &obj, &offset](const void* data, s64 off, s64 size) -> Result {
                 /* Write to the file. */
                 log_write("Writing %ld bytes at offset %ld\n", size, off);
-                R_TRY(Fs(obj).WriteFile(std::addressof(file), off, data, size, 0));
+                R_TRY(Fs(obj).WriteFile(std::addressof(file), off, data, size));
                 log_write("Wrote %ld bytes at offset %ld\n", size, off);
                 WriteCallbackProgress(CallbackType_WriteProgress, off, size);
                 offset += size;
@@ -599,11 +589,11 @@ namespace haze {
         log_write("Deleting object %u (%s)\n", object_id, obj->GetName());
 
         /* Figure out what type of object this is. */
-        FsDirEntryType entry_type;
+        FileAttrType entry_type;
         R_TRY(Fs(obj).GetEntryType(obj->GetName(), std::addressof(entry_type)));
 
         /* Remove the object from the filesystem. */
-        if (entry_type == FsDirEntryType_Dir) {
+        if (entry_type == FileAttrType_DIR) {
             WriteCallbackFile(CallbackType_DeleteFolder, obj->GetName());
             R_TRY(Fs(obj).DeleteDirectoryRecursively(obj->GetName()));
         } else {

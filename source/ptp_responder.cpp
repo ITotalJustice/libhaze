@@ -17,6 +17,7 @@
 #include <haze/ptp_data_builder.hpp>
 #include <haze/ptp_data_parser.hpp>
 #include <haze/ptp_responder_types.hpp>
+#include <ctime>
 
 namespace haze {
 
@@ -244,4 +245,20 @@ namespace haze {
     }
     #endif
 
+    const char* PtpResponder::BuildTimeStamp(char* out, u64 timestamp) {
+        if (!timestamp) {
+            return "";
+        }
+
+        std::tm tm;
+        const auto time = (std::time_t)timestamp;
+        if (!localtime_r(&time, &tm)) {
+            return "";
+        }
+
+        // todo: make sure this is the correct format.
+        // also, make sure the timezone is correct.
+        std::strftime(out, PtpStringMaxLength, "%Y%m%dT%H%M%S", &tm);
+        return out;
+    }
 }

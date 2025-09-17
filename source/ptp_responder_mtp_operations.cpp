@@ -97,6 +97,20 @@ namespace haze {
                         R_TRY(db.AddString(""));
                     }
                     break;
+                case PtpObjectPropertyCode_DateCreated:
+                    {
+                        R_TRY(db.Add(PtpDataTypeCode_String));
+                        R_TRY(db.Add(PtpPropertyGetSetFlag_GetSet));
+                        R_TRY(db.AddString(""));
+                    }
+                    break;
+                case PtpObjectPropertyCode_DateModified:
+                    {
+                        R_TRY(db.Add(PtpDataTypeCode_String));
+                        R_TRY(db.Add(PtpPropertyGetSetFlag_GetSet));
+                        R_TRY(db.AddString(""));
+                    }
+                    break;
                 HAZE_UNREACHABLE_DEFAULT_CASE();
             }
 
@@ -130,31 +144,9 @@ namespace haze {
         R_UNLESS(obj != nullptr, haze::ResultInvalidObjectId());
         log_write("Writing properties for object %u (%s)\n", object_id, obj->GetName());
 
-        /* Define helper for getting the object type. */
-        const auto GetObjectType = [&] (FsDirEntryType *out_entry_type) {
-            R_RETURN(Fs(obj).GetEntryType(obj->GetName(), out_entry_type));
-        };
-
-        /* Define helper for getting the object size. */
-        const auto GetObjectSize = [&] (s64 *out_size) {
-            *out_size = 0;
-
-            /* Check if this is a directory. */
-            FsDirEntryType entry_type;
-            R_TRY(GetObjectType(std::addressof(entry_type)));
-
-            /* If it is, we're done. */
-            R_SUCCEED_IF(entry_type == FsDirEntryType_Dir);
-
-            /* Otherwise, open as a file. */
-            FsFile file;
-            R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Read, std::addressof(file)));
-
-            /* Ensure we maintain a clean state on exit. */
-            ON_SCOPE_EXIT { Fs(obj).CloseFile(std::addressof(file)); };
-
-            R_RETURN(Fs(obj).GetFileSize(std::addressof(file), out_size));
-        };
+        /* Get the file attr upfront. */
+        FileAttr file_attr{};
+        R_TRY(Fs(obj).GetEntryAttributes(obj->GetName(), std::addressof(file_attr)));
 
         /* Begin writing the requested object property. */
         PtpDataBuilder db(m_buffers->usb_bulk_write_buffer, std::addressof(m_usb_server));
@@ -168,9 +160,17 @@ namespace haze {
                     break;
                 case PtpObjectPropertyCode_ObjectSize:
                     {
-                        s64 size;
-                        R_TRY(GetObjectSize(std::addressof(size)));
-                        R_TRY(db.Add<u64>(size));
+                        R_TRY(db.Add<u64>(file_attr.size));
+                    }
+                    break;
+                case PtpObjectPropertyCode_DateCreated:
+                    {
+                        R_TRY(db.AddString(BuildTimeStamp(m_buffers->capture_date_string_buffer, file_attr.ctime)));
+                    }
+                    break;
+                case PtpObjectPropertyCode_DateModified:
+                    {
+                        R_TRY(db.AddString(BuildTimeStamp(m_buffers->modification_date_string_buffer, file_attr.mtime)));
                     }
                     break;
                 case PtpObjectPropertyCode_StorageId:
@@ -185,9 +185,7 @@ namespace haze {
                     break;
                 case PtpObjectPropertyCode_ObjectFormat:
                     {
-                        FsDirEntryType entry_type;
-                        R_TRY(GetObjectType(std::addressof(entry_type)));
-                        R_TRY(db.Add(entry_type == FsDirEntryType_File ? PtpObjectFormatCode_Undefined : PtpObjectFormatCode_Association));
+                        R_TRY(db.Add(file_attr.type == FileAttrType_FILE ? PtpObjectFormatCode_Undefined : PtpObjectFormatCode_Association));
                     }
                     break;
                 case PtpObjectPropertyCode_ObjectFileName:
@@ -238,31 +236,9 @@ namespace haze {
         R_UNLESS(obj != nullptr, haze::ResultInvalidObjectId());
         log_write("Writing properties for object %u (%s)\n", object_id, obj->GetName());
 
-        /* Define helper for getting the object type. */
-        const auto GetObjectType = [&] (FsDirEntryType *out_entry_type) {
-            R_RETURN(Fs(obj).GetEntryType(obj->GetName(), out_entry_type));
-        };
-
-        /* Define helper for getting the object size. */
-        const auto GetObjectSize = [&] (s64 *out_size) {
-            *out_size = 0;
-
-            /* Check if this is a directory. */
-            FsDirEntryType entry_type;
-            R_TRY(GetObjectType(std::addressof(entry_type)));
-
-            /* If it is, we're done. */
-            R_SUCCEED_IF(entry_type == FsDirEntryType_Dir);
-
-            /* Otherwise, open as a file. */
-            FsFile file;
-            R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Read, std::addressof(file)));
-
-            /* Ensure we maintain a clean state on exit. */
-            ON_SCOPE_EXIT { Fs(obj).CloseFile(std::addressof(file)); };
-
-            R_RETURN(Fs(obj).GetFileSize(std::addressof(file), out_size));
-        };
+        /* Get the file attr upfront. */
+        FileAttr file_attr{};
+        R_TRY(Fs(obj).GetEntryAttributes(obj->GetName(), std::addressof(file_attr)));
 
         /* Define helper for determining if the property should be included. */
         const auto ShouldIncludeProperty = [&] (PtpObjectPropertyCode code) {
@@ -306,10 +282,20 @@ namespace haze {
                         break;
                     case PtpObjectPropertyCode_ObjectSize:
                         {
-                            s64 size;
-                            R_TRY(GetObjectSize(std::addressof(size)));
                             R_TRY(db.Add(PtpDataTypeCode_U64));
-                            R_TRY(db.Add<u64>(size));
+                            R_TRY(db.Add<u64>(file_attr.size));
+                        }
+                        break;
+                    case PtpObjectPropertyCode_DateCreated:
+                        {
+                            R_TRY(db.Add(PtpDataTypeCode_String));
+                            R_TRY(db.AddString(BuildTimeStamp(m_buffers->capture_date_string_buffer, file_attr.ctime)));
+                        }
+                        break;
+                    case PtpObjectPropertyCode_DateModified:
+                        {
+                            R_TRY(db.Add(PtpDataTypeCode_String));
+                            R_TRY(db.AddString(BuildTimeStamp(m_buffers->modification_date_string_buffer, file_attr.mtime)));
                         }
                         break;
                     case PtpObjectPropertyCode_StorageId:
@@ -326,10 +312,8 @@ namespace haze {
                         break;
                     case PtpObjectPropertyCode_ObjectFormat:
                         {
-                            FsDirEntryType entry_type;
-                            R_TRY(GetObjectType(std::addressof(entry_type)));
                             R_TRY(db.Add(PtpDataTypeCode_U16));
-                            R_TRY(db.Add(entry_type == FsDirEntryType_File ? PtpObjectFormatCode_Undefined : PtpObjectFormatCode_Association));
+                            R_TRY(db.Add(file_attr.type == FileAttrType_FILE ? PtpObjectFormatCode_Undefined : PtpObjectFormatCode_Association));
                         }
                         break;
                     case PtpObjectPropertyCode_ObjectFileName:
@@ -412,7 +396,25 @@ namespace haze {
                         R_TRY((dp.ReadString(m_buffers->filename_string_buffer)));
                     }
                     break;
+                case PtpObjectPropertyCode_DateCreated:
+                    {
+                        R_UNLESS(type == PtpDataTypeCode_String, haze::ResultUnknownPropertyCode());
+                        R_TRY((dp.ReadString(m_buffers->capture_date_string_buffer)));
+                        log_write("Received creation date: %s\n", m_buffers->capture_date_string_buffer);
+                    }
+                    break;
+                case PtpObjectPropertyCode_DateModified:
+                    {
+                        // todo: add fs support for setting modification date
+                        // nx fs doesn;t support setting data, however external mounted fs may support it
+                        // such as nfs mounted being exposed over mtp, which supports utimes.
+                        R_UNLESS(type == PtpDataTypeCode_String, haze::ResultUnknownPropertyCode());
+                        R_TRY((dp.ReadString(m_buffers->modification_date_string_buffer)));
+                        log_write("Received modification date: %s\n", m_buffers->modification_date_string_buffer);
+                    }
+                    break;
                 default:
+                    log_write("Unsupported property code 0x%x in SendObjectPropList\n", obj_property);
                     R_THROW(haze::ResultUnknownPropertyCode());
             }
         }
@@ -527,11 +529,11 @@ namespace haze {
             };
 
             /* Get the old object type. */
-            FsDirEntryType entry_type;
+            FileAttrType entry_type;
             R_TRY(Fs(obj).GetEntryType(obj->GetName(), std::addressof(entry_type)));
 
             /* Attempt to rename the object on the filesystem. */
-            if (entry_type == FsDirEntryType_Dir) {
+            if (entry_type == FileAttrType_DIR) {
                 R_TRY(Fs(obj).RenameDirectory(obj->GetName(), newobj->GetName()));
                 WriteCallbackRename(CallbackType_RenameFolder, obj->GetName(), newobj->GetName());
             } else {

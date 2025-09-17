@@ -82,6 +82,8 @@ namespace haze {
         PtpObjectPropertyCode_ObjectFormat,
         PtpObjectPropertyCode_ObjectSize,
         PtpObjectPropertyCode_ObjectFileName,
+        PtpObjectPropertyCode_DateCreated,
+        PtpObjectPropertyCode_DateModified,
         PtpObjectPropertyCode_ParentObject,
         PtpObjectPropertyCode_PersistentUniqueObjectIdentifier,
     };
@@ -135,8 +137,8 @@ namespace haze {
         u32 association_desc;
         u32 sequence_number;
         const char *filename;
-        const char *capture_date;
-        const char *modification_date;
+        const char* capture_date;
+        const char* modification_date;
         const char *keywords;
     };
 
@@ -171,7 +173,7 @@ namespace haze {
         char modification_date_string_buffer[PtpStringMaxLength + 1];
         char keywords_string_buffer[PtpStringMaxLength + 1];
 
-        FsDirectoryEntry file_system_entry_buffer[DirectoryReadSize];
+        DirEntry file_system_entry_buffer[DirectoryReadSize];
 
         alignas(4_KB) u8 usb_bulk_write_buffer[UsbBulkPacketBufferSize];
         alignas(4_KB) u8 usb_bulk_read_buffer[UsbBulkPacketBufferSize];

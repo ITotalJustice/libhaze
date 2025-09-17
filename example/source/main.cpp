@@ -11,10 +11,58 @@
 
 namespace {
 
+#define R_SUCCEED() return (Result)0
+
+#define R_THROW(_rc) return _rc
+
+#define R_TRY_RESULT(r, _result) { \
+    if (const auto _rc = (r); R_FAILED(_rc)) { \
+        R_THROW(_result); \
+    } \
+}
+
+#define R_TRY(r) { \
+    if (const auto _rc = (r); R_FAILED(_rc)) { \
+        R_THROW(_rc); \
+    } \
+}
+
+#define R_UNLESS(expr, res) { \
+    if (!(expr)) { \
+        R_THROW(res); \
+    } \
+}
+
+#define CONCATENATE_IMPL(s1, s2) s1##s2
+#define CONCATENATE(s1, s2) CONCATENATE_IMPL(s1, s2)
+#define ANONYMOUS_VARIABLE(pref) CONCATENATE(pref, __COUNTER__)
+
+template<typename Function>
+struct ScopeGuard {
+    ScopeGuard(Function&& function) : m_function(std::forward<Function>(function)) {
+
+    }
+    ~ScopeGuard() {
+        m_function();
+    }
+
+    ScopeGuard(const ScopeGuard&) = delete;
+    void operator=(const ScopeGuard&) = delete;
+
+private:
+    const Function m_function;
+};
+
+#define ON_SCOPE_EXIT(_f) ScopeGuard ANONYMOUS_VARIABLE(SCOPE_EXIT_STATE_){[&] { _f; }};
+
 Mutex g_mutex;
 std::vector<haze::CallbackData> g_callback_data;
 
 struct FsNative : haze::FileSystemProxyImpl {
+    using File = FsFile;
+    using Dir = FsDir;
+    using DirEntry = FsDirectoryEntry;
+
     FsNative() = default;
     FsNative(FsFileSystem* fs, bool own) {
         m_fs = *fs;
@@ -48,62 +96,154 @@ struct FsNative : haze::FileSystemProxyImpl {
     Result GetTotalSpace(const char *path, s64 *out) override {
         return fsFsGetTotalSpace(&m_fs, FixPath(path), out);
     }
+
     Result GetFreeSpace(const char *path, s64 *out) override {
         return fsFsGetFreeSpace(&m_fs, FixPath(path), out);
     }
-    Result GetEntryType(const char *path, FsDirEntryType *out_entry_type) override {
-        return fsFsGetEntryType(&m_fs, FixPath(path), out_entry_type);
+
+    Result GetEntryType(const char *path, haze::FileAttrType *out_entry_type) override {
+        FsDirEntryType type;
+        R_TRY(fsFsGetEntryType(&m_fs, FixPath(path), &type));
+        *out_entry_type = (type == FsDirEntryType_Dir) ? haze::FileAttrType_DIR : haze::FileAttrType_FILE;
+        R_SUCCEED();
     }
+
+    Result GetEntryAttributes(const char *path, haze::FileAttr *out) {
+        FsDirEntryType type;
+        R_TRY(fsFsGetEntryType(&m_fs, FixPath(path), &type));
+
+        if (type == FsDirEntryType_File) {
+            out->type = haze::FileAttrType_FILE;
+
+            // it doesn't matter if this fails.
+            FsTimeStampRaw timestamp{};
+            if (R_SUCCEEDED(fsFsGetFileTimeStampRaw(&m_fs, FixPath(path), &timestamp)) && timestamp.is_valid) {
+                out->ctime = timestamp.created;
+                out->mtime = timestamp.modified;
+            }
+
+            FsFile file;
+            R_TRY(fsFsOpenFile(&m_fs, FixPath(path), FsOpenMode_Read, &file));
+            ON_SCOPE_EXIT(fsFileClose(&file));
+
+            s64 size;
+            R_TRY(fsFileGetSize(&file, &size));
+            out->size = size;
+        } else {
+            out->type = haze::FileAttrType_DIR;
+        }
+
+        if (IsReadOnly()) {
+            out->flag |= haze::FileAttrFlag_READ_ONLY;
+        }
+
+        R_SUCCEED();
+    }
+
     Result CreateFile(const char* path, s64 size, u32 option) override {
         return fsFsCreateFile(&m_fs, FixPath(path), size, option);
     }
+
     Result DeleteFile(const char* path) override {
         return fsFsDeleteFile(&m_fs, FixPath(path));
     }
+
     Result RenameFile(const char *old_path, const char *new_path) override {
         char temp[FS_MAX_PATH];
         return fsFsRenameFile(&m_fs, FixPath(old_path, temp), FixPath(new_path));
     }
-    Result OpenFile(const char *path, u32 mode, FsFile *out_file) override {
-        return fsFsOpenFile(&m_fs, FixPath(path), mode, out_file);
+
+    Result OpenFile(const char *path, u32 mode, haze::File *out_file) override {
+        auto f = new File();
+        const auto rc = fsFsOpenFile(&m_fs, FixPath(path), mode, f);
+        if (R_FAILED(rc)) {
+            delete f;
+            return rc;
+        }
+
+        out_file->impl = f;
+        R_SUCCEED();
     }
-    Result GetFileSize(FsFile *file, s64 *out_size) override {
-        return fsFileGetSize(file, out_size);
+
+    Result GetFileSize(haze::File *file, s64 *out_size) override {
+        auto f = static_cast<File*>(file->impl);
+        return fsFileGetSize(f, out_size);
     }
-    Result SetFileSize(FsFile *file, s64 size) override {
-        return fsFileSetSize(file, size);
+
+    Result SetFileSize(haze::File *file, s64 size) override {
+        auto f = static_cast<File*>(file->impl);
+        return fsFileSetSize(f, size);
     }
-    Result ReadFile(FsFile *file, s64 off, void *buf, u64 read_size, u32 option, u64 *out_bytes_read) override {
-        return fsFileRead(file, off, buf, read_size, option, out_bytes_read);
+
+    Result ReadFile(haze::File *file, s64 off, void *buf, u64 read_size, u64 *out_bytes_read) override {
+        auto f = static_cast<File*>(file->impl);
+        return fsFileRead(f, off, buf, read_size, FsReadOption_None, out_bytes_read);
     }
-    Result WriteFile(FsFile *file, s64 off, const void *buf, u64 write_size, u32 option) override {
-        return fsFileWrite(file, off, buf, write_size, option);
+
+    Result WriteFile(haze::File *file, s64 off, const void *buf, u64 write_size) override {
+        auto f = static_cast<File*>(file->impl);
+        return fsFileWrite(f, off, buf, write_size, FsWriteOption_None);
     }
-    void CloseFile(FsFile *file) override {
-        fsFileClose(file);
+
+    void CloseFile(haze::File *file) override {
+        auto f = static_cast<File*>(file->impl);
+        if (f) {
+            fsFileClose(f);
+            delete f;
+            file->impl = nullptr;
+        }
     }
 
     Result CreateDirectory(const char* path) override {
         return fsFsCreateDirectory(&m_fs, FixPath(path));
     }
+
     Result DeleteDirectoryRecursively(const char* path) override {
         return fsFsDeleteDirectoryRecursively(&m_fs, FixPath(path));
     }
+
     Result RenameDirectory(const char *old_path, const char *new_path) override {
         char temp[FS_MAX_PATH];
         return fsFsRenameDirectory(&m_fs, FixPath(old_path, temp), FixPath(new_path));
     }
-    Result OpenDirectory(const char *path, u32 mode, FsDir *out_dir) override {
-        return fsFsOpenDirectory(&m_fs, FixPath(path), mode, out_dir);
+
+    Result OpenDirectory(const char *path, haze::Dir *out_dir) override {
+        auto dir = new Dir();
+        const auto rc = fsFsOpenDirectory(&m_fs, FixPath(path), FsDirOpenMode_ReadDirs | FsDirOpenMode_ReadFiles | FsDirOpenMode_NoFileSize, dir);
+        if (R_FAILED(rc)) {
+            delete dir;
+            return rc;
+        }
+
+        out_dir->impl = dir;
+        R_SUCCEED();
     }
-    Result ReadDirectory(FsDir *d, s64 *out_total_entries, size_t max_entries, FsDirectoryEntry *buf) override {
-        return fsDirRead(d, out_total_entries, max_entries, buf);
+
+    Result ReadDirectory(haze::Dir *d, s64 *out_total_entries, size_t max_entries, haze::DirEntry *buf) override {
+        auto dir = static_cast<Dir*>(d->impl);
+
+        std::vector<FsDirectoryEntry> entries(max_entries);
+        R_TRY(fsDirRead(dir, out_total_entries, entries.size(), entries.data()));
+
+        for (s64 i = 0; i < *out_total_entries; i++) {
+            std::strcpy(buf[i].name, entries[i].name);
+        }
+
+        R_SUCCEED();
     }
-    Result GetDirectoryEntryCount(FsDir *d, s64 *out_count) override {
-        return fsDirGetEntryCount(d, out_count);
+
+    Result GetDirectoryEntryCount(haze::Dir *d, s64 *out_count) override {
+        auto dir = static_cast<Dir*>(d->impl);
+        return fsDirGetEntryCount(dir, out_count);
     }
-    void CloseDirectory(FsDir *d) override {
-        fsDirClose(d);
+
+    void CloseDirectory(haze::Dir *d) override {
+        auto dir = static_cast<Dir*>(d->impl);
+        if (dir) {
+            fsDirClose(dir);
+            delete dir;
+            d->impl = nullptr;
+        }
     }
 
     FsFileSystem m_fs{};

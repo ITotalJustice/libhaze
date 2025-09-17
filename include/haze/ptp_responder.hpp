@@ -109,6 +109,8 @@ namespace haze {
             void WriteCallbackFile(CallbackType type, const char* name);
             void WriteCallbackRename(CallbackType type, const char* name, const char* newname);
             void WriteCallbackProgress(CallbackType type, s64 offset, s64 size);
+
+            static const char* BuildTimeStamp(char* out, u64 timestamp);
     };
 
 }

@@ -80,8 +80,12 @@ namespace haze {
                 R_RETURN(this->ForwardResult(m_filesystem->GetFreeSpace(FixPath(path), out)));
             }
 
-            Result GetEntryType(const char *path, FsDirEntryType *out_entry_type) const {
+            Result GetEntryType(const char *path, FileAttrType *out_entry_type) const {
                 R_RETURN(this->ForwardResult(m_filesystem->GetEntryType(FixPath(path), out_entry_type)));
+            }
+
+            Result GetEntryAttributes(const char *path, FileAttr *out) const {
+                R_RETURN(this->ForwardResult(m_filesystem->GetEntryAttributes(FixPath(path), out)));
             }
 
             Result CreateFile(const char* path, s64 size, u32 option) const {
@@ -99,32 +103,32 @@ namespace haze {
                 R_RETURN(this->ForwardResult(m_filesystem->RenameFile(FixPath(old_path), FixPath(new_path))));
             }
 
-            Result OpenFile(const char *path, u32 mode, FsFile *out_file) const {
+            Result OpenFile(const char *path, u32 mode, File *out_file) const {
                 if (mode == FsOpenMode_Write || mode == FsOpenMode_Append) {
                     R_UNLESS(!this->IsReadOnly(), ams::fs::ResultUnsupportedWriteForReadOnlyFileSystem());
                 }
                 R_RETURN(this->ForwardResult(m_filesystem->OpenFile(FixPath(path), mode, out_file)));
             }
 
-            Result GetFileSize(FsFile *file, s64 *out_size) const {
+            Result GetFileSize(File *file, s64 *out_size) const {
                 R_RETURN(this->ForwardResult(m_filesystem->GetFileSize(file, out_size)));
             }
 
-            Result SetFileSize(FsFile *file, s64 size) const {
+            Result SetFileSize(File *file, s64 size) const {
                 R_UNLESS(!this->IsReadOnly(), ams::fs::ResultUnsupportedWriteForReadOnlyFileSystem());
                 R_RETURN(this->ForwardResult(m_filesystem->SetFileSize(file, size)));
             }
 
-            Result ReadFile(FsFile *file, s64 off, void *buf, u64 read_size, u32 option, u64 *out_bytes_read) const {
-                R_RETURN(this->ForwardResult(m_filesystem->ReadFile(file, off, buf, read_size, option, out_bytes_read)));
+            Result ReadFile(File *file, s64 off, void *buf, u64 read_size, u64 *out_bytes_read) const {
+                R_RETURN(this->ForwardResult(m_filesystem->ReadFile(file, off, buf, read_size, out_bytes_read)));
             }
 
-            Result WriteFile(FsFile *file, s64 off, const void *buf, u64 write_size, u32 option) const {
+            Result WriteFile(File *file, s64 off, const void *buf, u64 write_size) const {
                 R_UNLESS(!this->IsReadOnly(), ams::fs::ResultUnsupportedWriteForReadOnlyFileSystem());
-                R_RETURN(this->ForwardResult(m_filesystem->WriteFile(file, off, buf, write_size, option)));
+                R_RETURN(this->ForwardResult(m_filesystem->WriteFile(file, off, buf, write_size)));
             }
 
-            void CloseFile(FsFile *file) const {
+            void CloseFile(File *file) const {
                 m_filesystem->CloseFile(file);
             }
 
@@ -143,19 +147,19 @@ namespace haze {
                 R_RETURN(this->ForwardResult(m_filesystem->RenameDirectory(FixPath(old_path), FixPath(new_path))));
             }
 
-            Result OpenDirectory(const char *path, u32 mode, FsDir *out_dir) const {
-                R_RETURN(this->ForwardResult(m_filesystem->OpenDirectory(FixPath(path), mode, out_dir)));
+            Result OpenDirectory(const char *path, Dir *out_dir) const {
+                R_RETURN(this->ForwardResult(m_filesystem->OpenDirectory(FixPath(path), out_dir)));
             }
 
-            Result ReadDirectory(FsDir *d, s64 *out_total_entries, size_t max_entries, FsDirectoryEntry *buf) const {
+            Result ReadDirectory(Dir *d, s64 *out_total_entries, size_t max_entries, DirEntry *buf) const {
                 R_RETURN(this->ForwardResult(m_filesystem->ReadDirectory(d, out_total_entries, max_entries, buf)));
             }
 
-            Result GetDirectoryEntryCount(FsDir *d, s64 *out_count) const {
+            Result GetDirectoryEntryCount(Dir *d, s64 *out_count) const {
                 R_RETURN(this->ForwardResult(m_filesystem->GetDirectoryEntryCount(d, out_count)));
             }
 
-            void CloseDirectory(FsDir *d) const {
+            void CloseDirectory(Dir *d) const {
                 m_filesystem->CloseDirectory(d);
             }
     };
