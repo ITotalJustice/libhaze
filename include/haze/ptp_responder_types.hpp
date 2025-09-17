@@ -57,16 +57,27 @@ namespace haze {
         PtpOperationCode_MtpSendObjectPropList,
     };
 
-    constexpr const PtpEventCode SupportedEventCodes[]                = { /* ... */ };
-    constexpr const PtpDevicePropertyCode SupportedDeviceProperties[] = { /* ... */ };
-    constexpr const PtpObjectFormatCode SupportedCaptureFormats[]     = { /* ... */ };
+    // note handled yet, just added to match N's MTP.
+    // the endpoint is IN, so the host will query these and see no data.
+    // therefore no handling of the interrupt is needed.
+    constexpr PtpEventCode SupportedEventCodes[] = {
+        PtpEventCode_ObjectAdded,
+        PtpEventCode_ObjectRemoved,
+        PtpEventCode_StoreAdded,
+        PtpEventCode_StoreRemoved,
+        PtpEventCode_ObjectInfoChanged,
+        PtpEventCode_StorageInfoChanged,
+    };
 
-    constexpr const PtpObjectFormatCode SupportedPlaybackFormats[] = {
+    constexpr PtpDevicePropertyCode SupportedDeviceProperties[] = { /* ... */ };
+    constexpr PtpObjectFormatCode SupportedCaptureFormats[]     = { /* ... */ };
+
+    constexpr PtpObjectFormatCode SupportedPlaybackFormats[] = {
         PtpObjectFormatCode_Undefined,
         PtpObjectFormatCode_Association,
     };
 
-    constexpr const PtpObjectPropertyCode SupportedObjectProperties[] = {
+    constexpr PtpObjectPropertyCode SupportedObjectProperties[] = {
         PtpObjectPropertyCode_StorageId,
         PtpObjectPropertyCode_ObjectFormat,
         PtpObjectPropertyCode_ObjectSize,
