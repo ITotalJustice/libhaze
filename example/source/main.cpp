@@ -63,6 +63,8 @@ struct FsNative : haze::FileSystemProxyImpl {
     using Dir = FsDir;
     using DirEntry = FsDirectoryEntry;
 
+    static constexpr u64 DELAY = 1e+8; // 100ms
+
     FsNative() = default;
     FsNative(FsFileSystem* fs, bool own) {
         m_fs = *fs;
@@ -141,6 +143,7 @@ struct FsNative : haze::FileSystemProxyImpl {
     }
 
     Result CreateFile(const char* path, s64 size, u32 option) override {
+        svcSleepThread(DELAY);
         return fsFsCreateFile(&m_fs, FixPath(path), size, option);
     }
 
@@ -176,11 +179,15 @@ struct FsNative : haze::FileSystemProxyImpl {
     }
 
     Result ReadFile(haze::File *file, s64 off, void *buf, u64 read_size, u64 *out_bytes_read) override {
+        svcSleepThread(DELAY);
+
         auto f = static_cast<File*>(file->impl);
         return fsFileRead(f, off, buf, read_size, FsReadOption_None, out_bytes_read);
     }
 
     Result WriteFile(haze::File *file, s64 off, const void *buf, u64 write_size) override {
+        svcSleepThread(DELAY);
+
         auto f = static_cast<File*>(file->impl);
         return fsFileWrite(f, off, buf, write_size, FsWriteOption_None);
     }
