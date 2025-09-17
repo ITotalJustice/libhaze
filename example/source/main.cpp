@@ -36,8 +36,8 @@ struct FsNative : haze::FileSystemProxyImpl {
             out = buf;
         }
 
-        if (len && !strncasecmp(path + 1, GetName(), len)) {
-            std::snprintf(out, sizeof(buf), "/%s", path + 1 + len);
+        if (len && !strncasecmp(path, GetName(), len)) {
+            std::snprintf(out, sizeof(buf), "/%s", path + len);
         } else {
             std::strcpy(out, path);
         }
@@ -133,6 +133,8 @@ struct FsAlbum final : FsNative {
     const char* GetDisplayName() const {
         return "Album";
     }
+
+    bool IsReadOnly() override { return true; }
 };
 
 void callbackHandler(const haze::CallbackData* data) {

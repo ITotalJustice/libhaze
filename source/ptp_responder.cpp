@@ -45,7 +45,7 @@ namespace haze {
         u32 storage_id = StorageId_DefaultStorage;
 
         for (const auto& e : entries) {
-            m_fs_entries.emplace_back(storage_id, e);
+            m_fs_entries.emplace_back(storage_id, FileSystemProxy{reactor, e});
             storage_id--;
         }
 

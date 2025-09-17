@@ -74,6 +74,7 @@ struct FileSystemProxyImpl {
     virtual Result GetDirectoryEntryCount(FsDir *d, s64 *out_count) = 0;
     virtual void CloseDirectory(FsDir *d) = 0;
 
+    virtual bool IsReadOnly() { return false; }
     virtual bool MultiThreadTransfer(s64 size, bool read) { return true; }
 };
 

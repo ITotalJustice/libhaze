@@ -20,27 +20,27 @@
 
 namespace haze {
 
+    // wrapper around the filesystem.
+    // it handles read only storage by checking if the fs is read only before
+    // every write call.
+    // this is done because despite telling the MTP client that the fs/file is read only,
+    // it seems to ignore it and try and write anyway...
+    // Before every fs call, the event reactor is polled for the last result,
+    // which is set if the quit event is fired.
     class FileSystemProxy final {
         private:
             EventReactor *m_reactor;
             std::shared_ptr<FileSystemProxyImpl> m_filesystem;
         public:
-            constexpr explicit FileSystemProxy() : m_reactor(), m_filesystem() { /* ... */ }
-
-            void Initialize(EventReactor *reactor, std::shared_ptr<FileSystemProxyImpl> fs) {
-                HAZE_ASSERT(fs != nullptr);
-
-                m_reactor = reactor;
-                m_filesystem = std::move(fs);
-            }
+            explicit FileSystemProxy(EventReactor *reactor, const std::shared_ptr<FileSystemProxyImpl>& fs) : m_reactor(reactor), m_filesystem(fs) { /* ... */ }
 
             void Finalize() {
                 m_reactor = nullptr;
                 m_filesystem = nullptr;
             }
         private:
-            // template <typename F, typename... Args>
-            Result ForwardResult(Result rc) {
+            Result ForwardResult(Result rc) const {
+                // NOTE: not thread safe!!!
                 /* If the event loop was stopped, return that here. */
                 R_TRY(m_reactor->GetResult());
 
@@ -56,84 +56,107 @@ namespace haze {
                 return path;
             }
         public:
-            Result GetTotalSpace(const char *path, s64 *out) {
+            const char* GetName() const {
+                return m_filesystem->GetName();
+            }
+
+            const char* GetDisplayName() const {
+                return m_filesystem->GetDisplayName();
+            }
+
+            bool IsReadOnly() const {
+                return m_filesystem->IsReadOnly();
+            }
+
+            bool MultiThreadTransfer(s64 size, bool read) const {
+                return m_filesystem->MultiThreadTransfer(size, read);
+            }
+
+            Result GetTotalSpace(const char *path, s64 *out) const {
                 R_RETURN(this->ForwardResult(m_filesystem->GetTotalSpace(FixPath(path), out)));
             }
 
-            Result GetFreeSpace(const char *path, s64 *out) {
+            Result GetFreeSpace(const char *path, s64 *out) const {
                 R_RETURN(this->ForwardResult(m_filesystem->GetFreeSpace(FixPath(path), out)));
             }
 
-            Result GetEntryType(const char *path, FsDirEntryType *out_entry_type) {
+            Result GetEntryType(const char *path, FsDirEntryType *out_entry_type) const {
                 R_RETURN(this->ForwardResult(m_filesystem->GetEntryType(FixPath(path), out_entry_type)));
             }
 
-            Result CreateFile(const char* path, s64 size, u32 option) {
+            Result CreateFile(const char* path, s64 size, u32 option) const {
+                R_UNLESS(!this->IsReadOnly(), ams::fs::ResultUnsupportedWriteForReadOnlyFileSystem());
                 R_RETURN(this->ForwardResult(m_filesystem->CreateFile(FixPath(path), size, option)));
             }
 
-            Result DeleteFile(const char* path) {
+            Result DeleteFile(const char* path) const {
+                R_UNLESS(!this->IsReadOnly(), ams::fs::ResultUnsupportedWriteForReadOnlyFileSystem());
                 R_RETURN(this->ForwardResult(m_filesystem->DeleteFile(FixPath(path))));
             }
 
-            Result RenameFile(const char *old_path, const char *new_path) {
+            Result RenameFile(const char *old_path, const char *new_path) const {
+                R_UNLESS(!this->IsReadOnly(), ams::fs::ResultUnsupportedWriteForReadOnlyFileSystem());
                 R_RETURN(this->ForwardResult(m_filesystem->RenameFile(FixPath(old_path), FixPath(new_path))));
             }
 
-            Result OpenFile(const char *path, u32 mode, FsFile *out_file) {
+            Result OpenFile(const char *path, u32 mode, FsFile *out_file) const {
+                if (mode == FsOpenMode_Write || mode == FsOpenMode_Append) {
+                    R_UNLESS(!this->IsReadOnly(), ams::fs::ResultUnsupportedWriteForReadOnlyFileSystem());
+                }
                 R_RETURN(this->ForwardResult(m_filesystem->OpenFile(FixPath(path), mode, out_file)));
             }
 
-            Result GetFileSize(FsFile *file, s64 *out_size) {
+            Result GetFileSize(FsFile *file, s64 *out_size) const {
                 R_RETURN(this->ForwardResult(m_filesystem->GetFileSize(file, out_size)));
             }
 
-            Result SetFileSize(FsFile *file, s64 size) {
+            Result SetFileSize(FsFile *file, s64 size) const {
+                R_UNLESS(!this->IsReadOnly(), ams::fs::ResultUnsupportedWriteForReadOnlyFileSystem());
                 R_RETURN(this->ForwardResult(m_filesystem->SetFileSize(file, size)));
             }
 
-            Result ReadFile(FsFile *file, s64 off, void *buf, u64 read_size, u32 option, u64 *out_bytes_read) {
+            Result ReadFile(FsFile *file, s64 off, void *buf, u64 read_size, u32 option, u64 *out_bytes_read) const {
                 R_RETURN(this->ForwardResult(m_filesystem->ReadFile(file, off, buf, read_size, option, out_bytes_read)));
             }
 
-            Result WriteFile(FsFile *file, s64 off, const void *buf, u64 write_size, u32 option) {
+            Result WriteFile(FsFile *file, s64 off, const void *buf, u64 write_size, u32 option) const {
+                R_UNLESS(!this->IsReadOnly(), ams::fs::ResultUnsupportedWriteForReadOnlyFileSystem());
                 R_RETURN(this->ForwardResult(m_filesystem->WriteFile(file, off, buf, write_size, option)));
             }
 
-            void CloseFile(FsFile *file) {
+            void CloseFile(FsFile *file) const {
                 m_filesystem->CloseFile(file);
             }
 
-            Result CreateDirectory(const char* path) {
+            Result CreateDirectory(const char* path) const {
+                R_UNLESS(!this->IsReadOnly(), ams::fs::ResultUnsupportedWriteForReadOnlyFileSystem());
                 R_RETURN(this->ForwardResult(m_filesystem->CreateDirectory(FixPath(path))));
             }
 
-            Result DeleteDirectoryRecursively(const char* path) {
+            Result DeleteDirectoryRecursively(const char* path) const {
+                R_UNLESS(!this->IsReadOnly(), ams::fs::ResultUnsupportedWriteForReadOnlyFileSystem());
                 R_RETURN(this->ForwardResult(m_filesystem->DeleteDirectoryRecursively(FixPath(path))));
             }
 
-            Result RenameDirectory(const char *old_path, const char *new_path) {
+            Result RenameDirectory(const char *old_path, const char *new_path) const {
+                R_UNLESS(!this->IsReadOnly(), ams::fs::ResultUnsupportedWriteForReadOnlyFileSystem());
                 R_RETURN(this->ForwardResult(m_filesystem->RenameDirectory(FixPath(old_path), FixPath(new_path))));
             }
 
-            Result OpenDirectory(const char *path, u32 mode, FsDir *out_dir) {
+            Result OpenDirectory(const char *path, u32 mode, FsDir *out_dir) const {
                 R_RETURN(this->ForwardResult(m_filesystem->OpenDirectory(FixPath(path), mode, out_dir)));
             }
 
-            Result ReadDirectory(FsDir *d, s64 *out_total_entries, size_t max_entries, FsDirectoryEntry *buf) {
+            Result ReadDirectory(FsDir *d, s64 *out_total_entries, size_t max_entries, FsDirectoryEntry *buf) const {
                 R_RETURN(this->ForwardResult(m_filesystem->ReadDirectory(d, out_total_entries, max_entries, buf)));
             }
 
-            Result GetDirectoryEntryCount(FsDir *d, s64 *out_count) {
+            Result GetDirectoryEntryCount(FsDir *d, s64 *out_count) const {
                 R_RETURN(this->ForwardResult(m_filesystem->GetDirectoryEntryCount(d, out_count)));
             }
 
-            void CloseDirectory(FsDir *d) {
+            void CloseDirectory(FsDir *d) const {
                 m_filesystem->CloseDirectory(d);
-            }
-
-            bool MultiThreadTransfer(s64 size, bool read) {
-                return m_filesystem->MultiThreadTransfer(size, read);
             }
     };
 

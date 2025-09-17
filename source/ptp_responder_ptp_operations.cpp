@@ -61,7 +61,7 @@ namespace haze {
 
         /* Create the root storages. */
         for (const auto& fs : m_fs_entries) {
-            const auto name = fs.impl->GetName();
+            const auto name = fs.impl.GetName();
             const auto storage_id = fs.storage_id;
 
             PtpObject *object;
@@ -135,7 +135,13 @@ namespace haze {
         storage_info.max_capacity         = total_space;
         storage_info.free_space_in_bytes  = free_space;
         storage_info.free_space_in_images = 0;
-        storage_info.storage_description = it->impl->GetDisplayName();
+        storage_info.storage_description = it->impl.GetDisplayName();
+
+        if (it->impl.IsReadOnly()) {
+            // todo: support removeable devices.
+            storage_info.storage_type = PtpStorageType_FixedRom;
+            storage_info.access_capability = PtpAccessCapability_ReadOnly;
+        }
 
         /* Write the storage info data. */
         R_TRY(db.WriteVariableLengthData(m_request_header, [&] () {
@@ -253,9 +259,13 @@ namespace haze {
             /* The SD Card directory has some special properties. */
             object_info.object_format    = PtpObjectFormatCode_Association;
             object_info.association_type = PtpAssociationType_GenericFolder;
-            object_info.filename         = it->impl->GetDisplayName();
+            object_info.filename         = it->impl.GetDisplayName();
+            if (it->impl.IsReadOnly()) {
+                object_info.protection_status = PtpProtectionStatus_ReadOnly;
+            }
         } else {
             /* Figure out what type of object this is. */
+            // todo: check GetType to stat() to get type, size, timestamp and r/w perm in 1 call.
             FsDirEntryType entry_type;
             R_TRY(Fs(obj).GetEntryType(obj->GetName(), std::addressof(entry_type)));
 
@@ -281,6 +291,11 @@ namespace haze {
             } else {
                 object_info.object_format    = PtpObjectFormatCode_Undefined;
                 object_info.association_type = PtpAssociationType_Undefined;
+            }
+
+            // note: mtp clients seem to ignore this and try and delete / write files anyway...
+            if (Fs(obj).IsReadOnly()) {
+                object_info.protection_status = PtpProtectionStatus_ReadOnly;
             }
         }
 
