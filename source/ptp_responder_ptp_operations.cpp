@@ -369,7 +369,7 @@ namespace haze {
                 R_TRY(db.AddBuffer((const u8*)data, size));
                 WriteCallbackProgress(CallbackType_ReadProgress, off, size);
                 R_SUCCEED();
-            }, mode
+            }, sphaira::thread::BUFFER_SIZE_READ, mode
         ));
 
         /* Flush the data response. */
@@ -552,7 +552,7 @@ namespace haze {
                 WriteCallbackProgress(CallbackType_WriteProgress, off, size);
                 offset += size;
                 R_SUCCEED();
-            }, mode
+            }, sphaira::thread::BUFFER_SIZE_WRITE, mode
         ));
 
         /* Write the success response. */

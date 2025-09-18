@@ -10,11 +10,11 @@
 namespace sphaira::thread {
 namespace {
 
-constexpr u64 BUFFER_SIZE = 1024*1024*1;
+constexpr u64 BUFFER_SIZE_ALLOC = std::max(BUFFER_SIZE_READ, BUFFER_SIZE_WRITE);
 
 struct ThreadBuffer {
     ThreadBuffer() {
-        buf.reserve(BUFFER_SIZE);
+        buf.reserve(BUFFER_SIZE_ALLOC);
     }
 
     std::vector<u8> buf;
@@ -256,7 +256,7 @@ void writeFunc(void* d) {
     t->SetWriteResult(t->writeFuncInternal());
 }
 
-Result TransferInternal(s64 size, const ReadCallback& rfunc, const WriteCallback& wfunc, Mode mode, u64 buffer_size = BUFFER_SIZE) {
+Result TransferInternal(s64 size, const ReadCallback& rfunc, const WriteCallback& wfunc, u64 buffer_size, Mode mode) {
     if (mode == Mode::SingleThreadedIfSmaller) {
         if ((u64)size <= buffer_size) {
             mode = Mode::SingleThreaded;
@@ -330,8 +330,8 @@ Result TransferInternal(s64 size, const ReadCallback& rfunc, const WriteCallback
 
 } // namespace
 
-Result Transfer(s64 size, const ReadCallback& rfunc, const WriteCallback& wfunc, Mode mode) {
-    return TransferInternal(size, rfunc, wfunc, mode);
+Result Transfer(s64 size, const ReadCallback& rfunc, const WriteCallback& wfunc, u64 buffer_size, Mode mode) {
+    return TransferInternal(size, rfunc, wfunc, buffer_size, mode);
 }
 
 } // namespace::thread
