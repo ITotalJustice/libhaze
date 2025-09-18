@@ -206,7 +206,7 @@ bool ThreadData::IsWriteBufFull() {
     // use condvar instead of waiting a set time as the buffer may be freed immediately.
     // however, to avoid deadlocks, we still need a timeout
     if (!write_buffers.ringbuf_free()) {
-        condvarWaitTimeout(std::addressof(can_read), std::addressof(mutex), 1e+7); // 10ms
+        condvarWaitTimeout(std::addressof(can_read), std::addressof(mutex), 5e+8); // 500ms
     }
 
     return !write_buffers.ringbuf_free();
@@ -270,7 +270,7 @@ Result ThreadData::readFuncInternal() {
     bool slow_mode{};
 
     while (this->read_offset < this->write_size && R_SUCCEEDED(this->GetResults())) {
-        // this will wait for max 10ms until the buffer has space.
+        // this will wait for max 500ms until the buffer has space.
         const auto is_write_full = this->IsWriteBufFull();
 
         // check if the write thread returned early, usually due to an error.
@@ -289,7 +289,7 @@ Result ThreadData::readFuncInternal() {
 
         s64 read_size = this->read_buffer_size;
         if (slow_mode) {
-            // reduce transfer rate to 100KiB/s in order to prevent windows from freezing.
+            // reduce transfer rate in order to prevent windows from freezing.
             read_size = 1024; // USB 3.0 max packet size.
         }
 
