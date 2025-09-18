@@ -321,7 +321,19 @@ Result ThreadData::writeFuncInternal() {
     PageAlignedVector buf;
     buf.reserve(this->read_buffer_size);
 
+    // every 10 transfers, sleep for 5s to simulate a freeze.
+    // this should trigger slow mode.
+    u32 test_slow_mode_counter{};
+    const u32 test_slow_mode_internval = 10;
+
     while (this->write_offset < this->write_size && R_SUCCEEDED(this->GetResults())) {
+        test_slow_mode_counter++;
+        if (test_slow_mode_counter >= test_slow_mode_internval) {
+            test_slow_mode_counter = 0;
+            haze::log_write("WriteFunc: simulating freeze for 5s, slow mode should trigger!\n");
+            svcSleepThread(5e+9); // 5s
+        }
+
         s64 dummy_off;
         R_TRY(this->GetWriteBuf(buf, dummy_off));
         const auto size = buf.size();

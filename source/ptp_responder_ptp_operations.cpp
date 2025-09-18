@@ -549,6 +549,10 @@ namespace haze {
                 // as windows will freeze if we take 3s+ between usb transfers.
                 if (!off && expected_file_size) {
                     log_write("Setting file size to %ld\n", expected_file_size);
+
+                    // for testing slow mode.
+                    svcSleepThread(5e+9); // 5s
+
                     R_TRY(Fs(obj).SetFileSize(std::addressof(file), expected_file_size));
                 }
 
