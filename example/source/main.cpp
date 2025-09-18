@@ -350,7 +350,7 @@ int main(int argc, char** argv) {
     // logs are buffered, so you must first exit libhaze in order to read the log file.
     // you can change this behavoir by editing source/log.cpp BUFFERED_LOG to 0.
     // note that if you do this, the performance will suffer greatly.
-    const bool enable_log = true;
+    const bool enable_log = false;
 
     mutexInit(&g_mutex);
     haze::Initialize(callbackHandler, fs_entries, vid, pid, enable_log); // init libhaze (creates thread)
