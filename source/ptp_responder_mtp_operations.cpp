@@ -453,12 +453,7 @@ namespace haze {
             WriteCallbackFile(CallbackType_CreateFolder, newobj->GetName());
             m_send_object_id = 0;
         } else {
-            u32 flags = 0;
-            if (prop_list.size >= 4_GB) {
-                flags = FsCreateOption_BigFile;
-            }
-
-            R_TRY(Fs(newobj).CreateFile(newobj->GetName(), prop_list.size, flags));
+            R_TRY(Fs(newobj).CreateFile(newobj->GetName(), prop_list.size));
             WriteCallbackFile(CallbackType_CreateFile, newobj->GetName());
             m_send_object_id = new_object_info.object_id;
         }

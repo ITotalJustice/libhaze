@@ -140,8 +140,16 @@ struct FsNative : haze::FileSystemProxyImpl {
         R_SUCCEED();
     }
 
-    Result CreateFile(const char* path, s64 size, u32 option) override {
-        return fsFsCreateFile(&m_fs, FixPath(path), size, option);
+    Result CreateFile(const char* path, s64 size) override {
+        u32 flags = 0;
+        const s64 _4_GB = 0x100000000;
+        if (size >= _4_GB) {
+            flags = FsCreateOption_BigFile;
+        }
+
+        // do not set the size here because it can block for too long which may cause timeouts.
+        // SEE: https://github.com/ITotalJustice/libhaze/issues/1#issuecomment-3305067733
+        return fsFsCreateFile(&m_fs, FixPath(path), 0, flags);
     }
 
     Result DeleteFile(const char* path) override {
@@ -153,9 +161,14 @@ struct FsNative : haze::FileSystemProxyImpl {
         return fsFsRenameFile(&m_fs, FixPath(old_path, temp), FixPath(new_path));
     }
 
-    Result OpenFile(const char *path, u32 mode, haze::File *out_file) override {
+    Result OpenFile(const char *path, haze::FileOpenMode mode, haze::File *out_file) override {
+        u32 flags = FsOpenMode_Read;
+        if (mode == haze::FileOpenMode_WRITE) {
+            flags = FsOpenMode_Write | FsOpenMode_Append;
+        }
+
         auto f = new File();
-        const auto rc = fsFsOpenFile(&m_fs, FixPath(path), mode, f);
+        const auto rc = fsFsOpenFile(&m_fs, FixPath(path), flags, f);
         if (R_FAILED(rc)) {
             delete f;
             return rc;
@@ -168,11 +181,6 @@ struct FsNative : haze::FileSystemProxyImpl {
     Result GetFileSize(haze::File *file, s64 *out_size) override {
         auto f = static_cast<File*>(file->impl);
         return fsFileGetSize(f, out_size);
-    }
-
-    Result SetFileSize(haze::File *file, s64 size) override {
-        auto f = static_cast<File*>(file->impl);
-        return fsFileSetSize(f, size);
     }
 
     Result ReadFile(haze::File *file, s64 off, void *buf, u64 read_size, u64 *out_bytes_read) override {

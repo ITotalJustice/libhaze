@@ -335,7 +335,7 @@ namespace haze {
 
         /* Lock the object as a file. */
         File file;
-        R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Read, std::addressof(file)));
+        R_TRY(Fs(obj).OpenFile(obj->GetName(), FileOpenMode_READ, std::addressof(file)));
         log_write("Opened file %s\n", obj->GetName());
 
         /* Ensure we maintain a clean state on exit. */
@@ -456,7 +456,7 @@ namespace haze {
             WriteCallbackFile(CallbackType_CreateFolder, obj->GetName());
             m_send_object_id = 0;
         } else {
-            R_TRY(Fs(obj).CreateFile(obj->GetName(), 0, 0));
+            R_TRY(Fs(obj).CreateFile(obj->GetName(), 0));
             WriteCallbackFile(CallbackType_CreateFile, obj->GetName());
             m_send_object_id = new_object_info.object_id;
         }
@@ -488,7 +488,7 @@ namespace haze {
 
         /* Lock the object as a file. */
         File file;
-        R_TRY(Fs(obj).OpenFile(obj->GetName(), FsOpenMode_Write | FsOpenMode_Append, std::addressof(file)));
+        R_TRY(Fs(obj).OpenFile(obj->GetName(), FileOpenMode_WRITE, std::addressof(file)));
         log_write("Opened file %s\n", obj->GetName());
 
         /* Ensure we maintain a clean state on exit. */
@@ -505,21 +505,11 @@ namespace haze {
             if (data_header.length > sizeof(PtpUsbBulkContainer)) {
                 /* Got the real file size. */
                 file_size = data_header.length - sizeof(PtpUsbBulkContainer);
-                R_TRY(Fs(obj).SetFileSize(std::addressof(file), file_size));
                 log_write("File size from data header: %ld\n", file_size);
             } else {
-                /* Truncate the file after locking for write. */
-                R_TRY(Fs(obj).SetFileSize(std::addressof(file), 0));
                 log_write("File size unknown, starting at 0\n");
             }
         }
-
-        /* Truncate the file to the received size. */
-        ON_SCOPE_EXIT{
-            if (offset != file_size) {
-                Fs(obj).SetFileSize(std::addressof(file), offset);
-            }
-        };
 
         WriteCallbackFile(CallbackType_WriteBegin, obj->GetName());
         ON_SCOPE_EXIT { WriteCallbackFile(CallbackType_WriteEnd, obj->GetName()); };

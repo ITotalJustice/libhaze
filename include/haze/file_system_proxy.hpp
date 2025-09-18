@@ -88,9 +88,9 @@ namespace haze {
                 R_RETURN(this->ForwardResult(m_filesystem->GetEntryAttributes(FixPath(path), out)));
             }
 
-            Result CreateFile(const char* path, s64 size, u32 option) const {
+            Result CreateFile(const char* path, s64 size) const {
                 R_UNLESS(!this->IsReadOnly(), ams::fs::ResultUnsupportedWriteForReadOnlyFileSystem());
-                R_RETURN(this->ForwardResult(m_filesystem->CreateFile(FixPath(path), size, option)));
+                R_RETURN(this->ForwardResult(m_filesystem->CreateFile(FixPath(path), size)));
             }
 
             Result DeleteFile(const char* path) const {
@@ -103,8 +103,8 @@ namespace haze {
                 R_RETURN(this->ForwardResult(m_filesystem->RenameFile(FixPath(old_path), FixPath(new_path))));
             }
 
-            Result OpenFile(const char *path, u32 mode, File *out_file) const {
-                if (mode == FsOpenMode_Write || mode == FsOpenMode_Append) {
+            Result OpenFile(const char *path, FileOpenMode mode, File *out_file) const {
+                if (mode == FileOpenMode_WRITE) {
                     R_UNLESS(!this->IsReadOnly(), ams::fs::ResultUnsupportedWriteForReadOnlyFileSystem());
                 }
                 R_RETURN(this->ForwardResult(m_filesystem->OpenFile(FixPath(path), mode, out_file)));
@@ -112,11 +112,6 @@ namespace haze {
 
             Result GetFileSize(File *file, s64 *out_size) const {
                 R_RETURN(this->ForwardResult(m_filesystem->GetFileSize(file, out_size)));
-            }
-
-            Result SetFileSize(File *file, s64 size) const {
-                R_UNLESS(!this->IsReadOnly(), ams::fs::ResultUnsupportedWriteForReadOnlyFileSystem());
-                R_RETURN(this->ForwardResult(m_filesystem->SetFileSize(file, size)));
             }
 
             Result ReadFile(File *file, s64 off, void *buf, u64 read_size, u64 *out_bytes_read) const {
