@@ -562,6 +562,7 @@ namespace haze {
         ));
 
         /* Write the success response. */
+        // note: it can timeout here if the final write takes too long.
         log_write("Received object %u (%s), total size %ld\n\n\n", m_send_object_id, obj->GetName(), offset);
         R_RETURN(this->WriteResponse(PtpResponseCode_Ok));
     }

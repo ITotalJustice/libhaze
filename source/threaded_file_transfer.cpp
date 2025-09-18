@@ -159,7 +159,7 @@ private:
     CondVar can_read{};
     CondVar can_write{};
 
-    RingBuf<8> write_buffers{};
+    RingBuf<2> write_buffers{};
 
     const u64 read_buffer_size;
     const s64 write_size;
@@ -202,6 +202,13 @@ void ThreadData::WakeAllThreads() {
 
 bool ThreadData::IsWriteBufFull() {
     SCOPED_MUTEX(std::addressof(mutex));
+
+    // use condvar instead of waiting a set time as the buffer may be freed immediately.
+    // however, to avoid deadlocks, we still need a timeout
+    if (!write_buffers.ringbuf_free()) {
+        condvarWaitTimeout(std::addressof(can_read), std::addressof(mutex), 1e+7); // 10ms
+    }
+
     return !write_buffers.ringbuf_free();
 }
 
@@ -263,7 +270,10 @@ Result ThreadData::readFuncInternal() {
     bool slow_mode{};
 
     while (this->read_offset < this->write_size && R_SUCCEEDED(this->GetResults())) {
+        // this will wait for max 10ms until the buffer has space.
         const auto is_write_full = this->IsWriteBufFull();
+
+        // check if the write thread returned early, usually due to an error.
         if (is_write_full && !write_running) {
             haze::log_write("ReadFunc: write thread exited, stopping read thread\n");
             break;
@@ -277,17 +287,14 @@ Result ThreadData::readFuncInternal() {
             haze::log_write("ReadFunc: switching to fast mode\n");
         }
 
-        // read more data
         s64 read_size = this->read_buffer_size;
         if (slow_mode) {
             // reduce transfer rate to 100KiB/s in order to prevent windows from freezing.
             read_size = 1024; // USB 3.0 max packet size.
-            svcSleepThread(1e+7); // 10ms
         }
 
-        transfer_buf.resize(read_size);
-
         u64 bytes_read{};
+        transfer_buf.resize(read_size);
         R_TRY(this->Read(transfer_buf.data(), transfer_buf.size(), std::addressof(bytes_read)));
         if (!bytes_read) {
             break;
