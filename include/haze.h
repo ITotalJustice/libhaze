@@ -97,6 +97,7 @@ struct FileSystemProxyImpl {
     virtual Result RenameFile(const char *old_path, const char *new_path) = 0;
     virtual Result OpenFile(const char *path, FileOpenMode mode, File *out_file) = 0;
     virtual Result GetFileSize(File *file, s64 *out_size) = 0;
+    virtual Result SetFileSize(File *file, s64 size) = 0;
     virtual Result ReadFile(File *file, s64 off, void *buf, u64 read_size, u64 *out_bytes_read) = 0;
     virtual Result WriteFile(File *file, s64 off, const void *buf, u64 write_size) = 0;
     virtual void CloseFile(File *file) = 0;

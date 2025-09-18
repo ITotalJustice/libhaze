@@ -352,12 +352,6 @@ namespace haze {
         WriteCallbackFile(CallbackType_ReadBegin, obj->GetName());
         ON_SCOPE_EXIT { WriteCallbackFile(CallbackType_ReadEnd, obj->GetName()); };
 
-        auto mode = sphaira::thread::Mode::MultiThreaded;
-        if (!Fs(obj).MultiThreadTransfer(file_size, true)) {
-            mode = sphaira::thread::Mode::SingleThreadedIfSmaller;
-        }
-
-        log_write("Using %s mode for transfer\n", mode == sphaira::thread::Mode::MultiThreaded ? "multi-threaded" : "single-threaded");
         R_TRY(sphaira::thread::Transfer(file_size,
             [this, &file, &obj](void* data, s64 off, s64 size, u64* bytes_read) -> Result {
                 /* Get the next batch. */
@@ -369,7 +363,7 @@ namespace haze {
                 R_TRY(db.AddBuffer((const u8*)data, size));
                 WriteCallbackProgress(CallbackType_ReadProgress, off, size);
                 R_SUCCEED();
-            }, sphaira::thread::BUFFER_SIZE_READ, mode
+            }, sphaira::thread::BUFFER_SIZE_READ, sphaira::thread::Mode::SingleThreadedIfSmaller
         ));
 
         /* Flush the data response. */
@@ -495,33 +489,37 @@ namespace haze {
         ON_SCOPE_EXIT { Fs(obj).CloseFile(std::addressof(file)); };
 
         /* Dummy file size for the threaded transfer. */
-        auto file_size = 4_GB;
+        u64 file_size = 4_GB;
+        u64 expected_file_size = 0;
         u64 offset = 0;
 
         if (m_send_prop_list) {
             file_size = m_send_prop_list->size;
+            expected_file_size = file_size;
             log_write("File size from property list: %ld\n", file_size);
         } else {
             if (data_header.length > sizeof(PtpUsbBulkContainer)) {
                 /* Got the real file size. */
                 file_size = data_header.length - sizeof(PtpUsbBulkContainer);
+                expected_file_size = file_size;
                 log_write("File size from data header: %ld\n", file_size);
             } else {
                 log_write("File size unknown, starting at 0\n");
             }
         }
 
+        /* Truncate the file to the received size. */
+        ON_SCOPE_EXIT{
+            if (offset < expected_file_size) {
+                Fs(obj).SetFileSize(std::addressof(file), offset);
+            }
+        };
+
         WriteCallbackFile(CallbackType_WriteBegin, obj->GetName());
         ON_SCOPE_EXIT { WriteCallbackFile(CallbackType_WriteEnd, obj->GetName()); };
 
-        auto mode = sphaira::thread::Mode::MultiThreaded;
-        if (!Fs(obj).MultiThreadTransfer(0, false)) {
-            mode = sphaira::thread::Mode::SingleThreaded;
-        }
-
         bool is_done = false;
 
-        log_write("Using %s mode for transfer\n", mode == sphaira::thread::Mode::MultiThreaded ? "multi-threaded" : "single-threaded");
         R_TRY(sphaira::thread::Transfer(file_size,
             [this, &dp, &is_done](void* data, s64 off, s64 size, u64* bytes_read) -> Result {
                 if (is_done) {
@@ -532,7 +530,7 @@ namespace haze {
                 /* Read as many bytes as we can. */
                 u32 bytes_received;
                 log_write("Reading up to %ld bytes at offset %ld\n", size, off);
-                const Result read_res = dp.ReadBuffer((u8*)data, size, std::addressof(bytes_received));
+                const Result read_res = dp.ReadBufferInPlace((u8*)data, size, std::addressof(bytes_received));
                 log_write("Received %u bytes\n", bytes_received);
                 *bytes_read = bytes_received;
 
@@ -544,15 +542,23 @@ namespace haze {
 
                 R_RETURN(read_res);
             },
-            [this, &file, &obj, &offset](const void* data, s64 off, s64 size) -> Result {
+            [this, &file, &obj, &offset, expected_file_size](const void* data, s64 off, s64 size) -> Result {
                 /* Write to the file. */
+                // during the first write, set the file size (if possible).
+                // the reason we do this here is so that we do not block for too long
+                // as windows will freeze if we take 3s+ between usb transfers.
+                if (!off && expected_file_size) {
+                    log_write("Setting file size to %ld\n", expected_file_size);
+                    R_TRY(Fs(obj).SetFileSize(std::addressof(file), expected_file_size));
+                }
+
                 log_write("Writing %ld bytes at offset %ld\n", size, off);
                 R_TRY(Fs(obj).WriteFile(std::addressof(file), off, data, size));
                 log_write("Wrote %ld bytes at offset %ld\n", size, off);
                 WriteCallbackProgress(CallbackType_WriteProgress, off, size);
                 offset += size;
                 R_SUCCEED();
-            }, sphaira::thread::BUFFER_SIZE_WRITE, mode
+            }, sphaira::thread::BUFFER_SIZE_WRITE
         ));
 
         /* Write the success response. */

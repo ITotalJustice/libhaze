@@ -29,22 +29,27 @@ namespace haze {
             u8 *m_data;
             bool m_eot;
         private:
-            Result Flush() {
+            Result Flush(u8* buffer, u32 size, u32* out_size) {
                 R_UNLESS(!m_eot, haze::ResultEndOfTransmission());
 
+                *out_size = 0;
                 m_received_size = 0;
                 m_offset = 0;
 
                 ON_SCOPE_EXIT {
                     /* End of transmission occurs when receiving a bulk transfer less than the buffer size. */
                     /* PTP uses zero-length termination, so zero is a possible size to receive. */
-                    m_eot = m_received_size < haze::UsbBulkPacketBufferSize;
+                    m_eot = *out_size < size;
                     if (m_eot) {
-                        log_write("End of transmission detected (received %u bytes)\n", m_received_size);
+                        log_write("End of transmission detected (received %u bytes)\n", *out_size);
                     }
                 };
 
-                R_RETURN(m_server->ReadPacket(m_data, haze::UsbBulkPacketBufferSize, std::addressof(m_received_size)));
+                R_RETURN(m_server->ReadPacket(buffer, size, out_size));
+            }
+
+            Result Flush() {
+                R_RETURN(this->Flush(m_data, haze::UsbBulkPacketBufferSize, std::addressof(m_received_size)));
             }
         public:
             constexpr explicit PtpDataParser(void *data, AsyncUsbServer *server) : m_server(server), m_received_size(), m_offset(), m_data(static_cast<u8 *>(data)), m_eot() { /* ... */ }
@@ -81,6 +86,25 @@ namespace haze {
                 }
 
                 R_SUCCEED();
+            }
+
+            // buffer must be page aligned.
+            // as well as the buffer internal size being page aligned.
+            // count must at least the size of max USB packet size (unless its the last read).
+            // it's best to always read in multiples of 1024 as this is the max packet size for USB 3.0.
+            // this function should only be used to prevent windows from freezing betweeen transfers
+            // if the previous usb transfer took longer than 3s.
+            // caller should read 1024 bytes and sleep 1-100ms between reads until the write buffer
+            // has space.
+            // in which case, use the above ReadBuffer as normal, or continue to use this function.
+            Result ReadBufferInPlace(u8 *buffer, u32 count, u32 *out_read_count) {
+                *out_read_count = 0;
+
+                // enable is debug builds only, we don't want to fatal in release builds.
+                // todo: replace all asserts with proper error handling, we should NEVER fatal.
+                // HAZE_ASSERT(!util::IsAligned((u64)buffer, 0x1000));
+                R_UNLESS(util::IsAligned((u64)buffer, 0x1000), haze::ResultBufferNotAligned());
+                R_RETURN(this->Flush(buffer, count, out_read_count));
             }
 
             template <typename T>

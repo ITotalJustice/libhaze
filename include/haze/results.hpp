@@ -40,5 +40,6 @@ namespace haze {
     R_DEFINE_ERROR_RESULT(InvalidArgument,       16);
     R_DEFINE_ERROR_RESULT(GroupSpecified,        17);
     R_DEFINE_ERROR_RESULT(DepthSpecified,        18);
+    R_DEFINE_ERROR_RESULT(BufferNotAligned,      19);
 
 }

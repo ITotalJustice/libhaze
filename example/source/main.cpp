@@ -183,6 +183,11 @@ struct FsNative : haze::FileSystemProxyImpl {
         return fsFileGetSize(f, out_size);
     }
 
+    Result SetFileSize(haze::File *file, s64 size) override {
+        auto f = static_cast<File*>(file->impl);
+        return fsFileSetSize(f, size);
+    }
+
     Result ReadFile(haze::File *file, s64 off, void *buf, u64 read_size, u64 *out_bytes_read) override {
         auto f = static_cast<File*>(file->impl);
         return fsFileRead(f, off, buf, read_size, FsReadOption_None, out_bytes_read);
@@ -313,11 +318,11 @@ void processEvents() {
             case haze::CallbackType_CreateFolder: std::printf("Creating Folder: %s\n", e.file.filename); break;
             case haze::CallbackType_DeleteFolder: std::printf("Deleting Folder: %s\n", e.file.filename); break;
 
-            case haze::CallbackType_ReadBegin: std::printf("Reading File Begin: %s \r", e.file.filename); break;
+            case haze::CallbackType_ReadBegin: std::printf("Reading File Begin: %s \n\n", e.file.filename); break;
             case haze::CallbackType_ReadProgress: std::printf("Reading File: offset: %lld size: %lld\r", e.progress.offset, e.progress.size); break;
-            case haze::CallbackType_ReadEnd: std::printf("Reading File Finished: %s\n", e.file.filename); break;
+            case haze::CallbackType_ReadEnd: std::printf("Reading File Finished: %s\n\n", e.file.filename); break;
 
-            case haze::CallbackType_WriteBegin: std::printf("Writing File Begin: %s \r", e.file.filename); break;
+            case haze::CallbackType_WriteBegin: std::printf("Writing File Begin: %s \n", e.file.filename); break;
             case haze::CallbackType_WriteProgress: std::printf("Writing File: offset: %lld size: %lld\r", e.progress.offset, e.progress.size); break;
             case haze::CallbackType_WriteEnd: std::printf("Writing File Finished: %s\n", e.file.filename); break;
         }

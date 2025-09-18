@@ -164,8 +164,8 @@ namespace haze {
         .keywords               = "",
     };
 
-    constexpr u32 UsbBulkPacketBufferSize = 64_KB;
-    constexpr s64 DirectoryReadSize = 128;
+    static constexpr u32 UsbBulkPacketBufferSize = 1_MB;
+    static constexpr s64 DirectoryReadSize = 128;
 
     struct PtpBuffers {
         char filename_string_buffer[PtpStringMaxLength + 1];

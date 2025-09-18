@@ -114,6 +114,11 @@ namespace haze {
                 R_RETURN(this->ForwardResult(m_filesystem->GetFileSize(file, out_size)));
             }
 
+            Result SetFileSize(File *file, s64 size) const {
+                R_UNLESS(!this->IsReadOnly(), ams::fs::ResultUnsupportedWriteForReadOnlyFileSystem());
+                R_RETURN(this->ForwardResult(m_filesystem->SetFileSize(file, size)));
+            }
+
             Result ReadFile(File *file, s64 off, void *buf, u64 read_size, u64 *out_bytes_read) const {
                 R_RETURN(this->ForwardResult(m_filesystem->ReadFile(file, off, buf, read_size, out_bytes_read)));
             }

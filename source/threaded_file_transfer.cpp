@@ -6,18 +6,65 @@
 #include <algorithm>
 #include <cstring>
 #include <atomic>
+#include <new>
 
 namespace sphaira::thread {
 namespace {
 
 constexpr u64 BUFFER_SIZE_ALLOC = std::max(BUFFER_SIZE_READ, BUFFER_SIZE_WRITE);
 
+struct ScopedMutex {
+    ScopedMutex(Mutex* mutex) : m_mutex{mutex} {
+        mutexLock(m_mutex);
+    }
+    ~ScopedMutex() {
+        mutexUnlock(m_mutex);
+    }
+
+    ScopedMutex(const ScopedMutex&) = delete;
+    void operator=(const ScopedMutex&) = delete;
+
+private:
+    Mutex* const m_mutex;
+};
+
+#define SCOPED_MUTEX(_m) ScopedMutex ANONYMOUS_VARIABLE(SCOPE_EXIT_STATE_){_m}
+
+// custom allocator for std::vector that respects alignment.
+// https://en.cppreference.com/w/cpp/named_req/Allocator
+template <typename T, std::size_t Align>
+struct CustomVectorAllocator {
+public:
+    // https://en.cppreference.com/w/cpp/memory/new/operator_new
+    auto allocate(std::size_t n) -> T* {
+        n = (n + (Align - 1)) &~ (Align - 1);
+        return new(align) T[n];
+    }
+    // https://en.cppreference.com/w/cpp/memory/new/operator_delete
+    auto deallocate(T* p, std::size_t n) noexcept -> void {
+        // ::operator delete[] (p, n, align);
+        ::operator delete[] (p, align);
+    }
+private:
+    static constexpr inline std::align_val_t align{Align};
+};
+
+template <typename T>
+struct PageAllocator : CustomVectorAllocator<T, 0x1000> {
+    using value_type = T; // used by std::vector
+};
+
+template<class T, class U>
+bool operator==(const PageAllocator <T>&, const PageAllocator <U>&) { return true; }
+
+using PageAlignedVector = std::vector<u8, PageAllocator<u8>>;
+
 struct ThreadBuffer {
     ThreadBuffer() {
         buf.reserve(BUFFER_SIZE_ALLOC);
     }
 
-    std::vector<u8> buf;
+    PageAlignedVector buf;
     s64 off;
 };
 
@@ -47,7 +94,7 @@ public:
         return ringbuf_capacity() - ringbuf_size();
     }
 
-    void ringbuf_push(std::vector<u8>& buf_in, s64 off_in) {
+    void ringbuf_push(PageAlignedVector& buf_in, s64 off_in) {
         auto& value = this->buf[this->w_index % ringbuf_capacity()];
         value.off = off_in;
         std::swap(value.buf, buf_in);
@@ -55,7 +102,7 @@ public:
         this->w_index = (this->w_index + 1U) % (ringbuf_capacity() * 2U);
     }
 
-    void ringbuf_pop(std::vector<u8>& buf_out, s64& off_out) {
+    void ringbuf_pop(PageAlignedVector& buf_out, s64& off_out) {
         auto& value = this->buf[this->r_index % ringbuf_capacity()];
         off_out = value.off;
         std::swap(value.buf, buf_out);
@@ -94,8 +141,9 @@ struct ThreadData {
     Result writeFuncInternal();
 
 private:
-    Result SetWriteBuf(std::vector<u8>& buf, s64 size);
-    Result GetWriteBuf(std::vector<u8>& buf_out, s64& off_out);
+    bool IsWriteBufFull();
+    Result SetWriteBuf(PageAlignedVector& buf, s64 size);
+    Result GetWriteBuf(PageAlignedVector& buf_out, s64& off_out);
 
     Result Read(void* buf, s64 size, u64* bytes_read);
 
@@ -111,7 +159,7 @@ private:
     CondVar can_read{};
     CondVar can_write{};
 
-    RingBuf<2> write_buffers{};
+    RingBuf<8> write_buffers{};
 
     const u64 read_buffer_size;
     const s64 write_size;
@@ -152,10 +200,15 @@ void ThreadData::WakeAllThreads() {
     mutexUnlock(std::addressof(mutex));
 }
 
-Result ThreadData::SetWriteBuf(std::vector<u8>& buf, s64 size) {
+bool ThreadData::IsWriteBufFull() {
+    SCOPED_MUTEX(std::addressof(mutex));
+    return !write_buffers.ringbuf_free();
+}
+
+Result ThreadData::SetWriteBuf(PageAlignedVector& buf, s64 size) {
     buf.resize(size);
 
-    mutexLock(std::addressof(mutex));
+    SCOPED_MUTEX(std::addressof(mutex));
     if (!write_buffers.ringbuf_free()) {
         if (!write_running) {
             R_SUCCEED();
@@ -172,8 +225,8 @@ Result ThreadData::SetWriteBuf(std::vector<u8>& buf, s64 size) {
     return condvarWakeOne(std::addressof(can_write));
 }
 
-Result ThreadData::GetWriteBuf(std::vector<u8>& buf_out, s64& off_out) {
-    mutexLock(std::addressof(mutex));
+Result ThreadData::GetWriteBuf(PageAlignedVector& buf_out, s64& off_out) {
+    SCOPED_MUTEX(std::addressof(mutex));
     if (!write_buffers.ringbuf_size()) {
         if (!read_running) {
             buf_out.resize(0);
@@ -203,22 +256,59 @@ Result ThreadData::readFuncInternal() {
     ON_SCOPE_EXIT{ read_running = false; };
 
     // the main buffer which data is read into.
-    std::vector<u8> buf;
+    PageAlignedVector buf;
+    // page-aligned temp buf, used for reading into before appending to main buffer.
+    PageAlignedVector transfer_buf;
     buf.reserve(this->read_buffer_size);
+    bool slow_mode{};
 
     while (this->read_offset < this->write_size && R_SUCCEEDED(this->GetResults())) {
+        const auto is_write_full = this->IsWriteBufFull();
+        if (is_write_full && !write_running) {
+            haze::log_write("ReadFunc: write thread exited, stopping read thread\n");
+            break;
+        }
+
+        if (!slow_mode && is_write_full) {
+            slow_mode = true;
+            haze::log_write("ReadFunc: switching to slow mode\n");
+        } else if (slow_mode && !is_write_full) {
+            slow_mode = false;
+            haze::log_write("ReadFunc: switching to fast mode\n");
+        }
+
         // read more data
         s64 read_size = this->read_buffer_size;
+        if (slow_mode) {
+            // reduce transfer rate to 100KiB/s in order to prevent windows from freezing.
+            read_size = 1024; // USB 3.0 max packet size.
+            svcSleepThread(1e+7); // 10ms
+        }
+
+        transfer_buf.resize(read_size);
 
         u64 bytes_read{};
-        buf.resize(read_size);
-        R_TRY(this->Read(buf.data(), read_size, std::addressof(bytes_read)));
+        R_TRY(this->Read(transfer_buf.data(), transfer_buf.size(), std::addressof(bytes_read)));
         if (!bytes_read) {
             break;
         }
 
-        const auto buf_size = bytes_read;
-        R_TRY(this->SetWriteBuf(buf, buf_size));
+        // append to main buffer.
+        const auto buf_offset = buf.size();
+        buf.resize(buf_offset + bytes_read);
+        std::memcpy(buf.data() + buf_offset, transfer_buf.data(), bytes_read);
+
+        // when we have left slow mode, flush.
+        // todo: check buffer size so that it doesn't grow too large.
+        if (!slow_mode) {
+            R_TRY(this->SetWriteBuf(buf, buf.size()));
+            buf.clear();
+        }
+    }
+
+    // flush buffer if needed.
+    if (!buf.empty()) {
+        R_TRY(this->SetWriteBuf(buf, buf.size()));
     }
 
     R_SUCCEED();
@@ -228,7 +318,7 @@ Result ThreadData::readFuncInternal() {
 Result ThreadData::writeFuncInternal() {
     ON_SCOPE_EXIT{ write_running = false; };
 
-    std::vector<u8> buf;
+    PageAlignedVector buf;
     buf.reserve(this->read_buffer_size);
 
     while (this->write_offset < this->write_size && R_SUCCEEDED(this->GetResults())) {
@@ -269,7 +359,7 @@ Result TransferInternal(s64 size, const ReadCallback& rfunc, const WriteCallback
 
     if (mode == Mode::SingleThreaded) {
         haze::log_write("Using single-threaded transfer\n");
-        std::vector<u8> buf(buffer_size);
+        PageAlignedVector buf(buffer_size);
 
         s64 offset{};
         while (offset < size) {
