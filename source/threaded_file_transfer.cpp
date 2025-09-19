@@ -226,7 +226,6 @@ Result ThreadData::SetWriteBuf(PageAlignedVector& buf, s64 size) {
         haze::log_write("SetWriteBuf: got space!\n");
     }
 
-    ON_SCOPE_EXIT { mutexUnlock(std::addressof(mutex)); };
     R_TRY(GetResults());
     write_buffers.ringbuf_push(buf, 0);
     return condvarWakeOne(std::addressof(can_write));
@@ -245,7 +244,6 @@ Result ThreadData::GetWriteBuf(PageAlignedVector& buf_out, s64& off_out) {
         haze::log_write("GetWriteBuf: got data!\n");
     }
 
-    ON_SCOPE_EXIT { mutexUnlock(std::addressof(mutex)); };
     R_TRY(GetResults());
     write_buffers.ringbuf_pop(buf_out, off_out);
     return condvarWakeOne(std::addressof(can_read));
