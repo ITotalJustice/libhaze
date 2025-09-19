@@ -15,4 +15,9 @@ inline Result CreateThread(Thread *t, ThreadFunc entry, void *arg, size_t stack_
     R_SUCCEED();
 }
 
+inline Result CreateThreadDedicated(Thread *t, ThreadFunc entry, void *arg, int cpuid, int prio, size_t stack_sz = 1024*128) {
+    R_TRY(threadCreate(t, entry, arg, nullptr, stack_sz, prio, cpuid));
+    R_SUCCEED();
+}
+
 } // namespace sphaira::utils

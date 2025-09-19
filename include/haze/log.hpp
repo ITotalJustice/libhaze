@@ -1,7 +1,7 @@
 // Code is taken from Sphaira.
 #pragma once
 
-#define haze_USE_LOG 1
+#define haze_USE_LOG 0
 
 #include <stdarg.h>
 
@@ -27,7 +27,7 @@ inline bool log_is_init() {
     return false;
 }
 
-inline void log_write(const char* s, ...) __attribute__ ((format (printf, 1, 2))) {
+inline void log_write(const char* s, ...) {
     (void)s;
 }
 

@@ -391,11 +391,11 @@ Result TransferInternal(s64 size, const ReadCallback& rfunc, const WriteCallback
         ThreadData t_data{uevent, size, rfunc, wfunc, buffer_size};
 
         Thread t_read{};
-        R_TRY(utils::CreateThread(&t_read, readFunc, std::addressof(t_data)));
+        R_TRY(utils::CreateThreadDedicated(&t_read, readFunc, std::addressof(t_data), 1, 0x20));
         ON_SCOPE_EXIT { threadClose(&t_read); };
 
         Thread t_write{};
-        R_TRY(utils::CreateThread(&t_write, writeFunc, std::addressof(t_data)));
+        R_TRY(utils::CreateThreadDedicated(&t_write, writeFunc, std::addressof(t_data), 2, 0x20));
         ON_SCOPE_EXIT { threadClose(&t_write); };
 
         R_TRY(threadStart(std::addressof(t_read)));

@@ -51,7 +51,7 @@ namespace haze {
                 log_write("Added cancel event to reactor\n");
 
                 /* Create and start thread. */
-                sphaira::utils::CreateThread(&m_thread, thread_func, this, 1024*64);
+                sphaira::utils::CreateThread(&m_thread, thread_func, this);
                 threadStart(&m_thread);
                 log_write("Started main loop thread\n");
             }
