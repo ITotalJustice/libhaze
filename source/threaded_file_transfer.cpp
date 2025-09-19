@@ -206,7 +206,7 @@ bool ThreadData::IsWriteBufFull() {
     // use condvar instead of waiting a set time as the buffer may be freed immediately.
     // however, to avoid deadlocks, we still need a timeout
     if (!write_buffers.ringbuf_free()) {
-        condvarWaitTimeout(std::addressof(can_read), std::addressof(mutex), 5e+8); // 500ms
+        condvarWaitTimeout(std::addressof(can_read), std::addressof(mutex), 1e+8); // 100ms
     }
 
     return !write_buffers.ringbuf_free();
@@ -389,11 +389,11 @@ Result TransferInternal(s64 size, const ReadCallback& rfunc, const WriteCallback
         ThreadData t_data{uevent, size, rfunc, wfunc, buffer_size};
 
         Thread t_read{};
-        R_TRY(utils::CreateThreadDedicated(&t_read, readFunc, std::addressof(t_data), 1, 0x20));
+        R_TRY(utils::CreateThread(&t_read, readFunc, std::addressof(t_data)));
         ON_SCOPE_EXIT { threadClose(&t_read); };
 
         Thread t_write{};
-        R_TRY(utils::CreateThreadDedicated(&t_write, writeFunc, std::addressof(t_data), 2, 0x20));
+        R_TRY(utils::CreateThread(&t_write, writeFunc, std::addressof(t_data)));
         ON_SCOPE_EXIT { threadClose(&t_write); };
 
         R_TRY(threadStart(std::addressof(t_read)));

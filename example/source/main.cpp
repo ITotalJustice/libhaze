@@ -184,8 +184,10 @@ struct FsNative : haze::FileSystemProxyImpl {
     }
 
     Result SetFileSize(haze::File *file, s64 size) override {
-        auto f = static_cast<File*>(file->impl);
-        return fsFileSetSize(f, size);
+        // stubbed for now.
+        R_SUCCEED();
+        // auto f = static_cast<File*>(file->impl);
+        // return fsFileSetSize(f, size);
     }
 
     Result ReadFile(haze::File *file, s64 off, void *buf, u64 read_size, u64 *out_bytes_read) override {
@@ -361,7 +363,7 @@ int main(int argc, char** argv) {
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     padInitializeDefault(&pad);
 
-    std::printf("libhaze example!\n\nPress (+) to exit\n");
+    std::printf("libhaze example TEST v8!\n\nPress (+) to exit\n");
     consoleUpdate(NULL);
 
     // loop until + button is pressed
