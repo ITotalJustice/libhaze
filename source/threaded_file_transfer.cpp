@@ -1,6 +1,8 @@
 #include "haze/threaded_file_transfer.hpp"
 #include "haze/thread.hpp"
 #include "haze/log.hpp"
+// can't include because circular dependency :/
+// #include "haze/ptp_responder_types.hpp"
 
 #include <vector>
 #include <algorithm>
@@ -257,7 +259,7 @@ Result ThreadData::readFuncInternal() {
         s64 read_size = this->read_buffer_size;
         if (slow_mode) {
             // reduce transfer rate in order to prevent windows from freezing.
-            read_size = 1024; // USB 3.0 max packet size.
+            read_size = 2048; // UsbBulkSlowModePacketBufferSize.
         }
 
         const auto buf_offset = buf.size();
