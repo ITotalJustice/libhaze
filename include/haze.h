@@ -111,7 +111,6 @@ struct FileSystemProxyImpl {
     virtual void CloseDirectory(Dir *d) = 0;
 
     virtual bool IsReadOnly() { return false; }
-    virtual bool MultiThreadTransfer(s64 size, bool read) { return true; }
 };
 
 using FsEntries = std::vector<std::shared_ptr<FileSystemProxyImpl>>;

@@ -68,10 +68,6 @@ namespace haze {
                 return m_filesystem->IsReadOnly();
             }
 
-            bool MultiThreadTransfer(s64 size, bool read) const {
-                return m_filesystem->MultiThreadTransfer(size, read);
-            }
-
             Result GetTotalSpace(const char *path, s64 *out) const {
                 R_RETURN(this->ForwardResult(m_filesystem->GetTotalSpace(FixPath(path), out)));
             }
