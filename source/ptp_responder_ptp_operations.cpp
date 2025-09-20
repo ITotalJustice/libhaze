@@ -530,7 +530,7 @@ namespace haze {
                 /* Read as many bytes as we can. */
                 u32 bytes_received;
                 log_write("Reading up to %ld bytes at offset %ld\n", size, off);
-                const Result read_res = dp.ReadBufferInPlace((u8*)data, size, std::addressof(bytes_received));
+                const Result read_res = dp.ReadBuffer((u8*)data, size, std::addressof(bytes_received), size);
                 log_write("Received %u bytes\n", bytes_received);
                 *bytes_read = bytes_received;
 

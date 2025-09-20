@@ -30,41 +30,12 @@ private:
 
 #define SCOPED_MUTEX(_m) ScopedMutex ANONYMOUS_VARIABLE(SCOPE_EXIT_STATE_){_m}
 
-// custom allocator for std::vector that respects alignment.
-// https://en.cppreference.com/w/cpp/named_req/Allocator
-template <typename T, std::size_t Align>
-struct CustomVectorAllocator {
-public:
-    // https://en.cppreference.com/w/cpp/memory/new/operator_new
-    auto allocate(std::size_t n) -> T* {
-        n = (n + (Align - 1)) &~ (Align - 1);
-        return new(align) T[n];
-    }
-    // https://en.cppreference.com/w/cpp/memory/new/operator_delete
-    auto deallocate(T* p, std::size_t n) noexcept -> void {
-        // ::operator delete[] (p, n, align);
-        ::operator delete[] (p, align);
-    }
-private:
-    static constexpr inline std::align_val_t align{Align};
-};
-
-template <typename T>
-struct PageAllocator : CustomVectorAllocator<T, 0x1000> {
-    using value_type = T; // used by std::vector
-};
-
-template<class T, class U>
-bool operator==(const PageAllocator <T>&, const PageAllocator <U>&) { return true; }
-
-using PageAlignedVector = std::vector<u8, PageAllocator<u8>>;
-
 struct ThreadBuffer {
     ThreadBuffer() {
         buf.reserve(BUFFER_SIZE_ALLOC);
     }
 
-    PageAlignedVector buf;
+    std::vector<u8> buf;
     s64 off;
 };
 
@@ -94,7 +65,7 @@ public:
         return ringbuf_capacity() - ringbuf_size();
     }
 
-    void ringbuf_push(PageAlignedVector& buf_in, s64 off_in) {
+    void ringbuf_push(std::vector<u8>& buf_in, s64 off_in) {
         auto& value = this->buf[this->w_index % ringbuf_capacity()];
         value.off = off_in;
         std::swap(value.buf, buf_in);
@@ -102,7 +73,7 @@ public:
         this->w_index = (this->w_index + 1U) % (ringbuf_capacity() * 2U);
     }
 
-    void ringbuf_pop(PageAlignedVector& buf_out, s64& off_out) {
+    void ringbuf_pop(std::vector<u8>& buf_out, s64& off_out) {
         auto& value = this->buf[this->r_index % ringbuf_capacity()];
         off_out = value.off;
         std::swap(value.buf, buf_out);
@@ -142,8 +113,8 @@ struct ThreadData {
 
 private:
     bool IsWriteBufFull();
-    Result SetWriteBuf(PageAlignedVector& buf, s64 size);
-    Result GetWriteBuf(PageAlignedVector& buf_out, s64& off_out);
+    Result SetWriteBuf(std::vector<u8>& buf, s64 size);
+    Result GetWriteBuf(std::vector<u8>& buf_out, s64& off_out);
 
     Result Read(void* buf, s64 size, u64* bytes_read);
 
@@ -212,7 +183,7 @@ bool ThreadData::IsWriteBufFull() {
     return !write_buffers.ringbuf_free();
 }
 
-Result ThreadData::SetWriteBuf(PageAlignedVector& buf, s64 size) {
+Result ThreadData::SetWriteBuf(std::vector<u8>& buf, s64 size) {
     buf.resize(size);
 
     SCOPED_MUTEX(std::addressof(mutex));
@@ -231,7 +202,7 @@ Result ThreadData::SetWriteBuf(PageAlignedVector& buf, s64 size) {
     return condvarWakeOne(std::addressof(can_write));
 }
 
-Result ThreadData::GetWriteBuf(PageAlignedVector& buf_out, s64& off_out) {
+Result ThreadData::GetWriteBuf(std::vector<u8>& buf_out, s64& off_out) {
     SCOPED_MUTEX(std::addressof(mutex));
     if (!write_buffers.ringbuf_size()) {
         if (!read_running) {
@@ -261,9 +232,7 @@ Result ThreadData::readFuncInternal() {
     ON_SCOPE_EXIT{ read_running = false; };
 
     // the main buffer which data is read into.
-    PageAlignedVector buf;
-    // page-aligned temp buf, used for reading into before appending to main buffer.
-    PageAlignedVector transfer_buf;
+    std::vector<u8> buf;
     buf.reserve(this->read_buffer_size);
     bool slow_mode{};
 
@@ -291,17 +260,17 @@ Result ThreadData::readFuncInternal() {
             read_size = 1024; // USB 3.0 max packet size.
         }
 
+        const auto buf_offset = buf.size();
+        buf.resize(buf_offset + read_size);
+
         u64 bytes_read{};
-        transfer_buf.resize(read_size);
-        R_TRY(this->Read(transfer_buf.data(), transfer_buf.size(), std::addressof(bytes_read)));
+        R_TRY(this->Read(buf.data(), read_size, std::addressof(bytes_read)));
         if (!bytes_read) {
             break;
         }
 
-        // append to main buffer.
-        const auto buf_offset = buf.size();
+        // resize to actual read size.
         buf.resize(buf_offset + bytes_read);
-        std::memcpy(buf.data() + buf_offset, transfer_buf.data(), bytes_read);
 
         // when we have left slow mode, flush.
         // todo: check buffer size so that it doesn't grow too large.
@@ -323,7 +292,7 @@ Result ThreadData::readFuncInternal() {
 Result ThreadData::writeFuncInternal() {
     ON_SCOPE_EXIT{ write_running = false; };
 
-    PageAlignedVector buf;
+    std::vector<u8> buf;
     buf.reserve(this->read_buffer_size);
 
     while (this->write_offset < this->write_size && R_SUCCEEDED(this->GetResults())) {
@@ -364,7 +333,7 @@ Result TransferInternal(s64 size, const ReadCallback& rfunc, const WriteCallback
 
     if (mode == Mode::SingleThreaded) {
         haze::log_write("Using single-threaded transfer\n");
-        PageAlignedVector buf(buffer_size);
+        std::vector<u8> buf(buffer_size);
 
         s64 offset{};
         while (offset < size) {

@@ -165,6 +165,7 @@ namespace haze {
     };
 
     static constexpr u32 UsbBulkPacketBufferSize = 1_MB;
+    static constexpr u32 UsbBulkSlowModePacketBufferSize = 1_KB; // USB 3.0 max packet size.
     static constexpr s64 DirectoryReadSize = 128;
 
     struct PtpBuffers {
