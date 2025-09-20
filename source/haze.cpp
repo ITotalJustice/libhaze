@@ -25,6 +25,34 @@ std::unique_ptr<haze::ConsoleMainLoop> g_haze{};
 
 } // namespace
 
+// generic helper for if timestamp isn't needed.
+::Result FileSystemProxyImpl::GetEntryAttributes(const char *path, FileAttr *out) {
+    if (auto rc = GetEntryType(path, &out->type); R_FAILED(rc)) {
+        return rc;
+    }
+
+    if (IsReadOnly()) {
+        out->flag |= FileAttrFlag_READ_ONLY;
+    }
+
+    if (out->type == FileAttrType_FILE) {
+        File f;
+        if (auto rc = OpenFile(path, FileOpenMode_READ, &f); R_FAILED(rc)) {
+            return rc;
+        }
+        ON_SCOPE_EXIT{ CloseFile(&f); };
+
+        s64 size;
+        if (auto rc = GetFileSize(&f, &size); R_FAILED(rc)) {
+            return rc;
+        }
+
+        out->size = size;
+    }
+
+    return 0;
+}
+
 bool Initialize(Callback callback, const FsEntries& entries, u16 vid, u16 pid, bool enable_log) {
     std::scoped_lock lock{g_mutex};
     if (g_haze) {

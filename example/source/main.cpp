@@ -108,7 +108,7 @@ struct FsNative : haze::FileSystemProxyImpl {
         R_SUCCEED();
     }
 
-    Result GetEntryAttributes(const char *path, haze::FileAttr *out) {
+    Result GetEntryAttributes(const char *path, haze::FileAttr *out) override {
         FsDirEntryType type;
         R_TRY(fsFsGetEntryType(&m_fs, FixPath(path), &type));
 

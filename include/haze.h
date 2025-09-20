@@ -91,7 +91,7 @@ struct FileSystemProxyImpl {
     virtual Result GetTotalSpace(const char *path, s64 *out) = 0;
     virtual Result GetFreeSpace(const char *path, s64 *out) = 0;
     virtual Result GetEntryType(const char *path, FileAttrType *out_entry_type) = 0;
-    virtual Result GetEntryAttributes(const char *path, FileAttr *out) = 0;
+    virtual Result GetEntryAttributes(const char *path, FileAttr *out);
     virtual Result CreateFile(const char* path, s64 size) = 0;
     virtual Result DeleteFile(const char* path) = 0;
     virtual Result RenameFile(const char *old_path, const char *new_path) = 0;
