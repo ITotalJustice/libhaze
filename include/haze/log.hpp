@@ -1,7 +1,7 @@
 // Code is taken from Sphaira.
 #pragma once
 
-#define haze_USE_LOG 0
+#define haze_USE_LOG 1
 
 #include <stdarg.h>
 

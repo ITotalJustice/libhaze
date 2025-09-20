@@ -206,7 +206,7 @@ bool ThreadData::IsWriteBufFull() {
     // use condvar instead of waiting a set time as the buffer may be freed immediately.
     // however, to avoid deadlocks, we still need a timeout
     if (!write_buffers.ringbuf_free()) {
-        condvarWaitTimeout(std::addressof(can_read), std::addressof(mutex), 1e+8); // 100ms
+        condvarWaitTimeout(std::addressof(can_read), std::addressof(mutex), 5e+8); // 500ms
     }
 
     return !write_buffers.ringbuf_free();
