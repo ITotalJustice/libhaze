@@ -132,7 +132,9 @@ private:
     CondVar can_read{};
     CondVar can_write{};
 
-    RingBuf<2> write_buffers{};
+    // ajdust if needed.
+    // using 1 as internally its triple buffered anyway (r/w have their own buffers).
+    RingBuf<1> write_buffers{};
 
     const u64 read_buffer_size;
     const s64 write_size;
@@ -179,7 +181,9 @@ bool ThreadData::IsWriteBufFull() {
     // use condvar instead of waiting a set time as the buffer may be freed immediately.
     // however, to avoid deadlocks, we still need a timeout
     if (!write_buffers.ringbuf_free()) {
-        condvarWaitTimeout(std::addressof(can_read), std::addressof(mutex), 5e+8); // 500ms
+        if (R_FAILED(condvarWaitTimeout(std::addressof(can_read), std::addressof(mutex), 1e+8))) { // 100ms
+            return true;
+        }
     }
 
     return !write_buffers.ringbuf_free();
@@ -239,7 +243,7 @@ Result ThreadData::readFuncInternal() {
     bool slow_mode{};
 
     while (this->read_offset < this->write_size && R_SUCCEEDED(this->GetResults())) {
-        // this will wait for max 500ms until the buffer has space.
+        // this will wait for max 100ms until the buffer has space.
         const auto is_write_full = this->IsWriteBufFull();
 
         // check if the write thread returned early, usually due to an error.
@@ -266,7 +270,7 @@ Result ThreadData::readFuncInternal() {
         buf.resize(buf_offset + read_size);
 
         u64 bytes_read{};
-        R_TRY(this->Read(buf.data(), read_size, std::addressof(bytes_read)));
+        R_TRY(this->Read(buf.data() + buf_offset, read_size, std::addressof(bytes_read)));
         if (!bytes_read) {
             break;
         }
@@ -284,6 +288,7 @@ Result ThreadData::readFuncInternal() {
 
     // flush buffer if needed.
     if (!buf.empty()) {
+        haze::log_write("ReadFunc: flushing final buffer of size %zu\n", buf.size());
         R_TRY(this->SetWriteBuf(buf, buf.size()));
     }
 

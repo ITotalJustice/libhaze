@@ -31,6 +31,7 @@ namespace haze {
         private:
             Result Flush(u32 max_flush) {
                 R_UNLESS(!m_eot, haze::ResultEndOfTransmission());
+                max_flush = util::AlignUp(max_flush, 1_KB);
                 max_flush = std::clamp<u32>(max_flush, haze::UsbBulkSlowModePacketBufferSize, haze::UsbBulkPacketBufferSize);
 
                 m_received_size = 0;
@@ -60,14 +61,14 @@ namespace haze {
                 }
             }
 
-            Result ReadBuffer(u8 *buffer, u32 count, u32 *out_read_count, u32 max_flush = haze::UsbBulkPacketBufferSize) {
+            Result ReadBuffer(u8 *buffer, u32 count, u32 *out_read_count) {
                 *out_read_count = 0;
 
                 while (count > 0) {
                     /* If we cannot read more bytes now, flush. */
                     if (m_offset == m_received_size) {
                         log_write("ReadBuffer: flushing to get more data: %u\n", count);
-                        R_TRY(this->Flush(max_flush));
+                        R_TRY(this->Flush(count));
                         log_write("ReadBuffer: flushed, got %u bytes left: %u\n", m_received_size, count);
                     }
 

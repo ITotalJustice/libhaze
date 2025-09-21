@@ -184,8 +184,15 @@ struct FsNative : haze::FileSystemProxyImpl {
     }
 
     Result SetFileSize(haze::File *file, s64 size) override {
+        // set to 0 if your switch freezes here when allocating a huge (1+GB) file.
+        // afaik this only happens when using emuMMC + windows.
+        // DM me for more info.
+        #if 1
         auto f = static_cast<File*>(file->impl);
         return fsFileSetSize(f, size);
+        #else
+        R_SUCCEED();
+        #endif
     }
 
     Result ReadFile(haze::File *file, s64 off, void *buf, u64 read_size, u64 *out_bytes_read) override {
@@ -306,8 +313,8 @@ void processEvents() {
     // log events
     for (const auto& e : data) {
         switch (e.type) {
-            case haze::CallbackType_OpenSession: std::printf("Opening Session\n"); break;
-            case haze::CallbackType_CloseSession: std::printf("Closing Session\n"); break;
+            case haze::CallbackType_OpenSession: std::printf("\nOpening Session\n\n"); break;
+            case haze::CallbackType_CloseSession: std::printf("\nClosing Session\n\n"); break;
 
             case haze::CallbackType_CreateFile: std::printf("Creating File: %s\n", e.file.filename); break;
             case haze::CallbackType_DeleteFile: std::printf("Deleting File: %s\n", e.file.filename); break;
@@ -319,12 +326,12 @@ void processEvents() {
             case haze::CallbackType_DeleteFolder: std::printf("Deleting Folder: %s\n", e.file.filename); break;
 
             case haze::CallbackType_ReadBegin: std::printf("Reading File Begin: %s \n\n", e.file.filename); break;
-            case haze::CallbackType_ReadProgress: std::printf("Reading File: offset: %lld size: %lld\r", e.progress.offset, e.progress.size); break;
-            case haze::CallbackType_ReadEnd: std::printf("Reading File Finished: %s\n\n", e.file.filename); break;
+            case haze::CallbackType_ReadProgress: std::printf("\tReading File: offset: %lld size: %lld\r", e.progress.offset, e.progress.size); break;
+            case haze::CallbackType_ReadEnd: std::printf("\nReading File Finished: %s\n\n", e.file.filename); break;
 
-            case haze::CallbackType_WriteBegin: std::printf("Writing File Begin: %s \n", e.file.filename); break;
-            case haze::CallbackType_WriteProgress: std::printf("Writing File: offset: %lld size: %lld\r", e.progress.offset, e.progress.size); break;
-            case haze::CallbackType_WriteEnd: std::printf("Writing File Finished: %s\n", e.file.filename); break;
+            case haze::CallbackType_WriteBegin: std::printf("Writing File Begin: %s \n\n", e.file.filename); break;
+            case haze::CallbackType_WriteProgress: std::printf("\tWriting File: offset: %lld size: %lld\r", e.progress.offset, e.progress.size); break;
+            case haze::CallbackType_WriteEnd: std::printf("\nWriting File Finished: %s\n\n", e.file.filename); break;
         }
     }
 
@@ -350,7 +357,7 @@ int main(int argc, char** argv) {
     // logs are buffered, so you must first exit libhaze in order to read the log file.
     // you can change this behavoir by editing source/log.cpp BUFFERED_LOG to 0.
     // note that if you do this, the performance will suffer greatly.
-    const bool enable_log = false;
+    const bool enable_log = true;
 
     mutexInit(&g_mutex);
     haze::Initialize(callbackHandler, fs_entries, vid, pid, enable_log); // init libhaze (creates thread)
@@ -361,7 +368,7 @@ int main(int argc, char** argv) {
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     padInitializeDefault(&pad);
 
-    std::printf("libhaze example TEST v9!\n\nPress (+) to exit\n");
+    std::printf("libhaze example TEST v10!\n\nPress (+) to exit\n");
     consoleUpdate(NULL);
 
     // loop until + button is pressed
